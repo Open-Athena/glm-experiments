@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   update_release_draft:
+    if: false # CI disabled
     permissions:
       # write permission is required to create a github release
       contents: write

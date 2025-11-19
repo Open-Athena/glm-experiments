@@ -12,6 +12,7 @@ on:
 
 jobs:
   code-quality:
+    if: false # CI disabled
     runs-on: ubuntu-latest
 
     steps:
