@@ -41,6 +41,34 @@ uv sync --group dev
 pre-commit install
 ```
 
+## Testing
+
+Run tests using pytest:
+
+```bash
+# run all tests
+pytest
+
+# run only fast tests (exclude slow tests)
+pytest -k "not slow"
+
+# run tests from a specific file
+pytest tests/test_train.py
+
+# run with verbose output
+pytest -v
+```
+
+You can also use the Makefile shortcuts:
+
+```bash
+# run fast tests
+make test
+
+# run all tests
+make test-full
+```
+
 ## How to run
 
 Train model with default configuration

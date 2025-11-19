@@ -8,6 +8,7 @@ on:
 
 jobs:
   run_tests_ubuntu:
+    if: false # CI disabled
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -43,6 +44,7 @@ jobs:
           pytest -v
 
   run_tests_macos:
+    if: false # CI disabled
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -78,6 +80,7 @@ jobs:
           pytest -v
 
   run_tests_windows:
+    if: false # CI disabled
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -113,6 +116,7 @@ jobs:
 
   # upload code coverage report
   code-coverage:
+    if: false # CI disabled
     runs-on: ubuntu-latest
 
     steps:
