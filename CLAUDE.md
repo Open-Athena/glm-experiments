@@ -35,7 +35,11 @@ Requirements for training framework:
 - bf16
 - torch compile
 - DDP
-- Let's skip tests for now (ignore everything below talking about testing)
+- If using transformers, use flash-attention (v2/v3) and rope
+
+Testing approach:
+- Test things that are easy and don't require GPU training (e.g., data loading, tokenization, config instantiation)
+- Skip tests that require expensive compute (e.g., full training runs)
 
 Next steps:
 - Reproduce GPN-Animal-Promoter
@@ -377,13 +381,15 @@ This project runs on AWS EC2 with AWS EFS mounted storage:
 - **Filesystem type**: NFS4 (AWS EFS)
 - **Persistent storage**: `~/efs` directory (survives instance restarts)
 - **Non-persistent storage**: Home directory (`~`) is ephemeral
+- **Shell configuration**: `~/efs/env` (sourced to set up environment)
 
 ### Installation Guidelines
 
 - ⚠️ **Install all packages and tools to `~/efs`** - home directory is not persistent
 - Use `uv` for Python package management
 - Virtual environments should be in project directory or under `~/efs`
-- Global tools must be installed to `~/efs/bin` or similar
+- Global tools must be installed to `~/efs/bin`
+- The `~/efs/env` file configures PATH and environment variables - source it to access installed tools
 
 ### Finding Persistent Storage
 
@@ -974,3 +980,4 @@ pyproject.toml                  # Dependencies
 - **`.pre-commit-config.yaml`** - Formatting configuration
 - **`pyproject.toml`** - Dependencies and pytest config
 - **`tests/conftest.py`** - Test fixtures
+- remove the statement about not testing. let's do test things that are easy and not require e.g. gpu training.
