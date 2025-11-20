@@ -19,6 +19,11 @@ def loss_fn(logits: torch.Tensor, labels: torch.Tensor, loss_weight: torch.Tenso
     logits = logits.view(-1, logits.size(-1))
     labels = labels.view(-1)
     loss_weight = loss_weight.view(-1)
+    # Subset to positions where labels != -100 (ignore index)
+    mask = labels != -100
+    logits = logits[mask]
+    labels = labels[mask]
+    loss_weight = loss_weight[mask]
     loss = F.cross_entropy(logits, labels, reduction="none")
     loss = (loss * loss_weight / loss_weight.sum()).sum()
     return loss

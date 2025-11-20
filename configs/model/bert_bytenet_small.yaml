@@ -32,4 +32,4 @@ scheduler:
   _partial_: true
   num_warmup_steps: 100
 
-compile: false
+compile: True

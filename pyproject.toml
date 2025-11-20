@@ -37,6 +37,7 @@ dependencies = [
     "transformers>=4.30.0",
     "biopython>=1.81",
     "zstandard>=0.18.0",
+    "wandb>=0.23.0",
 ]
 
 [dependency-groups]
