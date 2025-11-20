@@ -14,17 +14,17 @@ clean-logs: ## Clean logs
 	rm -rf logs/**
 
 format: ## Run pre-commit hooks
-	pre-commit run -a
+	uv run pre-commit run -a
 
 sync: ## Merge changes from main branch to your current branch
 	git pull
 	git pull origin main
 
 test: ## Run not slow tests
-	pytest -k "not slow"
+	uv run pytest -k "not slow"
 
 test-full: ## Run all tests
-	pytest
+	uv run pytest
 
 train: ## Train the model
-	python glm_experiments/train.py
+	uv run python glm_experiments/train.py
