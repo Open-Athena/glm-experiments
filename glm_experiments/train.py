@@ -60,6 +60,12 @@ def train(cfg: DictConfig) -> tuple[dict[str, Any], dict[str, Any]]:
     log.info(f"Instantiating model <{cfg.model._target_}>")
     model: LightningModule = hydra.utils.instantiate(cfg.model)
 
+    # Compile the entire LightningModule if requested
+    # This will automatically compile the *_step() methods as well
+    if cfg.get("compile", False):
+        log.info("Compiling model with torch.compile...")
+        model = torch.compile(model)
+
     log.info("Instantiating callbacks...")
     callbacks: list[Callback] = instantiate_callbacks(cfg.get("callbacks"))
 

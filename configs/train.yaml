@@ -47,3 +47,8 @@ ckpt_path: null
 
 # seed for random number generators in pytorch, numpy and python.random
 seed: 42
+
+# whether to compile the entire LightningModule with torch.compile
+# This will automatically compile the *_step() methods as well
+# overwrite from command line with `python train.py compile=false`
+compile: True

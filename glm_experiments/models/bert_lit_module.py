@@ -13,7 +13,6 @@ class BERTLitModule(LightningModule):
         net: BERT model
         optimizer: Optimizer partial function (from Hydra with _partial_: true)
         scheduler: Scheduler partial function (from Hydra with _partial_: true)
-        compile: Whether to torch.compile the model
     """
 
     def __init__(
@@ -21,7 +20,6 @@ class BERTLitModule(LightningModule):
         net: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.LRScheduler,
-        compile: bool = False,
     ):
         super().__init__()
 
@@ -29,10 +27,6 @@ class BERTLitModule(LightningModule):
         self.save_hyperparameters(ignore=["net"], logger=False)
 
         self.net = net
-
-        # Optionally compile model
-        if compile:
-            self.net = torch.compile(self.net)
 
     def forward(self, input_ids: torch.Tensor, labels: torch.Tensor, loss_weight: torch.Tensor):
         """Forward pass through model."""
