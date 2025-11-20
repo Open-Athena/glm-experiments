@@ -1,13 +1,12 @@
 # CLAUDE.md - Complete Development Guide
 
-This document provides comprehensive coding standards, development practices, and technical details for AI assistants working on the GLM Experiments project.
-
-**For project roadmap and feature planning**, see [PROJECT.md](PROJECT.md).
+This document provides comprehensive coding standards, development practices, technical details, and project roadmap for AI assistants working on the GLM Experiments project.
 
 ---
 
 ## Table of Contents
 
+- [Project Roadmap](#project-roadmap)
 - [Core Principles](#core-principles)
 - [Code Quality Standards](#code-quality-standards)
 - [Technology Stack](#technology-stack)
@@ -21,6 +20,30 @@ This document provides comprehensive coding standards, development practices, an
 - [Anti-Patterns to Avoid](#anti-patterns-to-avoid)
 - [Best Practices](#best-practices)
 - [Common Issues](#common-issues)
+
+---
+
+## Project Roadmap
+
+This section tracks the development roadmap and feature planning for the gLM experiments project.
+
+High-level goals:
+- Perform experiments training genomic language models (gLMs)
+
+Requirements for training framework:
+- Reproducible (as long as you fix the seed)
+- bf16
+- torch compile
+- DDP
+- Let's skip tests for now (ignore everything below talking about testing)
+
+Next steps:
+- Reproduce GPN-Animal-Promoter
+Paper: https://www.biorxiv.org/content/10.1101/2025.02.11.637758v2
+Code: https://github.com/songlab-cal/gpn/tree/main/analysis/gpn_animal_promoter
+Model: https://huggingface.co/songlab/gpn-animal-promoter
+Training dataset: https://huggingface.co/datasets/songlab/gpn-animal-promoter-dataset
+Eval dataset: https://huggingface.co/datasets/songlab/TraitGym (subset to promoter variants)
 
 ---
 
@@ -184,7 +207,6 @@ glm-experiments/
 │   └── test_*.py                # Test files
 │
 ├── CLAUDE.md                    # This file
-├── PROJECT.md                   # Project roadmap
 └── pyproject.toml               # Dependencies and configuration
 ```
 
@@ -402,8 +424,7 @@ This project uses a structured, issue-driven workflow with five phases.
 ### Phase 1: Formalize Goals
 
 Ensure these documents exist:
-- **CLAUDE.md** (this file) - Coding standards and development guide
-- **PROJECT.md** - Project roadmap and feature planning
+- **CLAUDE.md** (this file) - Coding standards, development guide, and project roadmap
 - **Design docs** - Feature specifications (if needed)
 
 ### Phase 2: Develop Issues
@@ -937,7 +958,6 @@ python glm_experiments/train.py debug=fdr            # Fast debug
 
 ```
 CLAUDE.md                        # This file
-PROJECT.md                       # Project roadmap
 glm_experiments/                # Main package
 configs/                        # Hydra configs
 tests/                          # Test suite
@@ -948,7 +968,6 @@ pyproject.toml                  # Dependencies
 
 ## References
 
-- **[PROJECT.md](PROJECT.md)** - Project roadmap and feature planning
 - **[PyTorch Lightning Docs](https://lightning.ai/docs/pytorch/stable/)** - Official docs
 - **[Hydra Docs](https://hydra.cc/)** - Official docs
 - **[Agentic Git Flow Blog](https://matsen.group/general/2025/11/01/agentic-git-flow.html)** - Workflow inspiration
