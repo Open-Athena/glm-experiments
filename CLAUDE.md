@@ -313,8 +313,8 @@ Main configs use `defaults` for composition:
 # configs/train.yaml
 defaults:
   - _self_
-  - data: mnist
-  - model: simple_net
+  - data: gpn_animal_promoter
+  - model: bert_bytenet_small
   - trainer: gpu
 
 # Override from command line
@@ -330,8 +330,8 @@ Located in `configs/experiment/`:
 # @package _global_
 
 defaults:
-  - override /data: mnist
-  - override /model: resnet
+  - override /data: gpn_animal_promoter
+  - override /model: bert_bytenet_small
 
 tags: ["experiment", "baseline"]
 seed: 42
@@ -340,7 +340,8 @@ data:
   batch_size: 128
 
 model:
-  lr: 0.001
+  optimizer:
+    lr: 0.001
 ```
 
 ### Important Patterns
@@ -691,10 +692,10 @@ python glm_experiments/train.py debug=overfit
 
 ```bash
 # Grid search
-python glm_experiments/train.py -m data.batch_size=32,64,128 model.lr=0.001,0.0005
+python glm_experiments/train.py -m data.batch_size=32,64,128 model.optimizer.lr=0.001,0.0005
 
-# Optuna search
-python glm_experiments/train.py -m hparams_search=mnist_optuna experiment=example
+# With experiment config
+python glm_experiments/train.py -m experiment=example data.batch_size=32,64
 ```
 
 ### Multiple Seeds
