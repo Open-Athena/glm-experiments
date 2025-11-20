@@ -981,3 +981,4 @@ pyproject.toml                  # Dependencies
 - **`pyproject.toml`** - Dependencies and pytest config
 - **`tests/conftest.py`** - Test fixtures
 - remove the statement about not testing. let's do test things that are easy and not require e.g. gpu training.
+- You should follow my instructions in @CLAUDE.md (draft an issue in markdown, let me approve, then you create the issue).
