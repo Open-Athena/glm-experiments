@@ -1,0 +1,23 @@
+_target_: glm_experiments.data.dna_datamodule.DNADataModule
+
+# Dataset and tokenizer
+dataset_name: songlab/gpn-animal-promoter-dataset
+tokenizer_name: gonzalobenegas/tokenizer-dna-mlm
+
+# Batch size (total across all devices, will be divided by world_size)
+batch_size: 2048 # Total: 8 GPUs × 256/device or 4 GPUs × 512/device
+num_workers: 8
+pin_memory: true
+
+# MLM parameters
+mlm_probability: 0.15 # Standard BERT masking (15% of tokens)
+
+# Soft masking for genomic soft-masked regions (lowercase nucleotides)
+soft_masked_loss_weight_train: 0.01 # Low weight for soft-masked regions during training
+soft_masked_loss_weight_eval: 0.0 # No weight for soft-masked regions during eval
+
+# Data augmentation
+data_augmentation: true # Reverse complement augmentation (training only)
+
+# Reproducibility
+seed: 42

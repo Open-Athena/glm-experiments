@@ -33,6 +33,10 @@ dependencies = [
     "hydra-optuna-sweeper>=1.2.0",
     "rootutils",
     "rich>=13.0.0",
+    "datasets>=2.14.0",
+    "transformers>=4.30.0",
+    "biopython>=1.81",
+    "zstandard>=0.18.0",
 ]
 
 [dependency-groups]
