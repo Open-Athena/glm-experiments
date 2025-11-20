@@ -4,12 +4,12 @@ net:
   _target_: glm_experiments.models.components.bert.BERT
   embedder:
     _target_: torch.nn.Embedding
-    num_embeddings: 6 # [PAD, A, C, G, T, MASK]
+    num_embeddings: 7
     embedding_dim: 128
     padding_idx: 0
   encoder:
     _target_: glm_experiments.models.components.bytenet.ByteNet
-    hidden_size: 128 # Match embedding_dim
+    hidden_size: ${..embedder.embedding_dim}
     n_layers: 8 # Smaller for debug
     slim: true
     dilation_base: 2
@@ -18,8 +18,8 @@ net:
     rest_kernel_size: 5
   decoder:
     _target_: torch.nn.Linear
-    in_features: 128
-    out_features: 6 # Vocab size
+    in_features: ${..embedder.embedding_dim}
+    out_features: ${..embedder.num_embeddings}
 
 optimizer:
   _target_: torch.optim.AdamW

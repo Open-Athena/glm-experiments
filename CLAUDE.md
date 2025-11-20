@@ -36,6 +36,7 @@ Requirements for training framework:
 - torch compile
 - DDP should work fine for having 8 gpus and 1 node:
    - fast
+   - not bottlenecked by CPU (make sure to have the appropriate number of workers)
    - deterministic when setting seed
    - no dataloader bugs (e.g. make sure that data is not repeated or missed)
 - If using transformers, use flash-attention (v2/v3) and rope
