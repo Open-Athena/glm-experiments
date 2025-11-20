@@ -38,7 +38,7 @@ To set up the development environment with linting, formatting, and testing tool
 uv sync --group dev
 
 # install pre-commit hooks
-pre-commit install
+uv run pre-commit install
 ```
 
 ## Testing
@@ -47,16 +47,16 @@ Run tests using pytest:
 
 ```bash
 # run all tests
-pytest
+uv run pytest
 
 # run only fast tests (exclude slow tests)
-pytest -k "not slow"
+uv run pytest -k "not slow"
 
 # run tests from a specific file
-pytest tests/test_train.py
+uv run pytest tests/test_train.py
 
 # run with verbose output
-pytest -v
+uv run pytest -v
 ```
 
 You can also use the Makefile shortcuts:
@@ -75,20 +75,20 @@ Train model with default configuration
 
 ```bash
 # train on CPU
-python glm_experiments/train.py trainer=cpu
+uv run python glm_experiments/train.py trainer=cpu
 
 # train on GPU
-python glm_experiments/train.py trainer=gpu
+uv run python glm_experiments/train.py trainer=gpu
 ```
 
 Train model with chosen experiment configuration from [configs/experiment/](configs/experiment/)
 
 ```bash
-python glm_experiments/train.py experiment=experiment_name.yaml
+uv run python glm_experiments/train.py experiment=experiment_name.yaml
 ```
 
 You can override any parameter from command line like this
 
 ```bash
-python glm_experiments/train.py trainer.max_epochs=20 data.batch_size=64
+uv run python glm_experiments/train.py trainer.max_epochs=20 data.batch_size=64
 ```
