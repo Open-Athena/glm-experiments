@@ -14,7 +14,8 @@ def apply_reverse_complement(sequences: list[str]) -> list[str]:
     """Apply random reverse complement augmentation to sequences.
 
     Each sequence is independently randomly assigned to forward or reverse
-    complement strand with equal probability.
+    complement strand with equal probability. Uses torch random for proper
+    seeding in DataLoader workers.
 
     Args:
         sequences: List of DNA sequences
@@ -23,9 +24,10 @@ def apply_reverse_complement(sequences: list[str]) -> list[str]:
         List of sequences, each randomly on forward or reverse complement strand
     """
     n = len(sequences)
-    strand = np.random.choice(["+", "-"], n)
+    # Use torch random (0=forward, 1=reverse) - properly seeded per DataLoader worker
+    reverse_mask = torch.randint(0, 2, (n,))
     return [
-        seq if strand[i] == "+" else str(Seq(seq).reverse_complement())
+        str(Seq(seq).reverse_complement()) if reverse_mask[i] else seq
         for i, seq in enumerate(sequences)
     ]
 
@@ -133,6 +135,10 @@ class DNADataModule(LightningDataModule):
         Args:
             stage: Either 'fit' or 'validate'
         """
+        # Seed torch for reproducibility - this determines the base_seed
+        # that PyTorch DataLoader uses to seed each worker
+        torch.manual_seed(self.hparams.seed)
+
         # Calculate per-device batch size for DDP
         if self.trainer is not None:
             if self.hparams.batch_size % self.trainer.world_size != 0:
