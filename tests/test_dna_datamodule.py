@@ -1,15 +1,16 @@
-"""Tests for DNA DataModule and MLM collator."""
+"""Tests for DNA DataModule and MLM functions."""
 
+import numpy as np
 import pytest
 import torch
 from Bio.Seq import Seq
 from hydra import compose, initialize
-from omegaconf import DictConfig
 
-from glm_experiments.data.components.mlm_collator import (
-    DataCollatorForLanguageModelingSimplified,
+from glm_experiments.data.dna_datamodule import (
+    DNADataModule,
+    apply_mlm_masking,
+    apply_reverse_complement,
 )
-from glm_experiments.data.dna_datamodule import DNADataModule
 
 
 @pytest.fixture
@@ -81,17 +82,15 @@ def test_batch_shape_and_types(dna_datamodule):
     assert batch["labels"].shape == (batch_size, seq_length)
     assert batch["loss_weight"].shape == (batch_size, seq_length)
 
-    # Check dtypes (input_ids should be uint8, loss_weight should be float16)
-    # Note: After masking, input_ids might be converted to int64 by the collator
+    # Check dtypes
+    assert batch["input_ids"].dtype == torch.int8
+    assert batch["labels"].dtype == torch.int8
     assert batch["loss_weight"].dtype == torch.float16
 
 
 def test_soft_masking_loss_weights():
     """Test that soft masking loss weights are computed correctly for lowercase nucleotides."""
-    import numpy as np
     from transformers import AutoTokenizer
-
-    from glm_experiments.data.dna_datamodule import DNADataModule
 
     # Create a simple test case with mixed case sequence
     tokenizer = AutoTokenizer.from_pretrained("gonzalobenegas/tokenizer-dna-mlm")  # nosec B615
@@ -103,21 +102,22 @@ def test_soft_masking_loss_weights():
     # Tokenize
     tokenized = tokenizer(
         test_seq,
-        return_special_tokens_mask=True,
         padding=False,
         truncation=False,
+        return_token_type_ids=False,
+        return_attention_mask=False,
+        return_special_tokens_mask=False,
     )
 
     # Create loss weights
     input_ids = torch.tensor(tokenized["input_ids"], dtype=torch.uint8)
-    loss_weight = torch.ones_like(input_ids, dtype=torch.float16)
+    loss_weight = torch.ones(input_ids.shape, dtype=torch.float16)
 
     for i, s in enumerate(test_seq):
         lowercase_mask = np.array([c.islower() for c in s])
         loss_weight[i][lowercase_mask] = soft_masked_weight
 
     # Check that lowercase positions have lower weight
-    # Note: We need to account for special tokens added by tokenizer
     seq = test_seq[0]
     lowercase_count = sum(1 for c in seq if c.islower())
     assert (loss_weight[0] == soft_masked_weight).sum() == lowercase_count
@@ -139,9 +139,78 @@ def test_reverse_complement():
         assert rc == expected_rc
 
 
+def test_apply_reverse_complement():
+    """Test the apply_reverse_complement function."""
+    # Set seed for reproducibility
+    np.random.seed(42)
+
+    sequences = ["ATGC", "GGGG", "AAAA"]
+    result = apply_reverse_complement(sequences)
+
+    # Should return same number of sequences
+    assert len(result) == len(sequences)
+
+    # Each result should be either original or reverse complement
+    for i, seq in enumerate(sequences):
+        rc = str(Seq(seq).reverse_complement())
+        assert result[i] in [seq, rc]
+
+
+def test_apply_mlm_masking():
+    """Test the apply_mlm_masking function."""
+    # Create test input
+    input_ids = torch.tensor([[1, 2, 3, 4, 5], [2, 3, 4, 5, 6]], dtype=torch.int8)
+    mask_token_id = 7
+    vocab_size = 10
+    mlm_probability = 0.5  # High probability for testing
+
+    masked_ids, labels = apply_mlm_masking(
+        input_ids,
+        mask_token_id=mask_token_id,
+        vocab_size=vocab_size,
+        mlm_probability=mlm_probability,
+    )
+
+    # Check shapes
+    assert masked_ids.shape == input_ids.shape
+    assert labels.shape == input_ids.shape
+
+    # Check dtypes
+    assert masked_ids.dtype == torch.int8
+    assert labels.dtype == torch.int8
+
+    # Check that some positions are masked (labels != -100)
+    masked_positions = labels != -100
+    assert masked_positions.sum() > 0
+
+    # Check that non-masked positions have label -100
+    assert (labels == -100).sum() > 0
+
+    # Check that [MASK] tokens appear in output
+    assert (masked_ids == mask_token_id).sum() > 0
+
+
+def test_apply_mlm_masking_preserves_unmasked():
+    """Test that apply_mlm_masking with 0 probability preserves all tokens."""
+    input_ids = torch.tensor([[1, 2, 3, 4, 5]], dtype=torch.int8)
+
+    masked_ids, labels = apply_mlm_masking(
+        input_ids,
+        mask_token_id=7,
+        vocab_size=10,
+        mlm_probability=0.0,
+    )
+
+    # All labels should be -100 (ignore)
+    assert (labels == -100).all()
+
+    # Input should be unchanged
+    assert torch.equal(masked_ids, input_ids)
+
+
 @pytest.mark.slow
 def test_collator_applies_masking(dna_datamodule):
-    """Test that data collator applies masking correctly."""
+    """Test that masking is applied correctly in batches."""
     dna_datamodule.prepare_data()
     dna_datamodule.setup(stage="fit")
 
@@ -263,37 +332,3 @@ def test_validation_no_soft_masking(dna_datamodule):
 
     # Min weight should be 0.0 for eval (soft-masked positions)
     assert min_weight == 0.0 or min_weight == 1.0
-
-
-def test_collator_stacks_tensors():
-    """Test that collator correctly stacks pre-tensorized data."""
-    from transformers import AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained("gonzalobenegas/tokenizer-dna-mlm")  # nosec B615
-    collator = DataCollatorForLanguageModelingSimplified(
-        tokenizer=tokenizer, mlm=True, mlm_probability=0.15
-    )
-
-    # Create fake examples (simulating what comes from dataset)
-    examples = [
-        {
-            "input_ids": torch.tensor([1, 2, 3, 4, 5], dtype=torch.uint8),
-            "special_tokens_mask": torch.tensor([0, 0, 0, 0, 0], dtype=torch.uint8),
-            "loss_weight": torch.tensor([1.0, 1.0, 0.01, 1.0, 1.0], dtype=torch.float16),
-        },
-        {
-            "input_ids": torch.tensor([2, 3, 4, 5, 6], dtype=torch.uint8),
-            "special_tokens_mask": torch.tensor([0, 0, 0, 0, 0], dtype=torch.uint8),
-            "loss_weight": torch.tensor([1.0, 0.01, 1.0, 1.0, 1.0], dtype=torch.float16),
-        },
-    ]
-
-    batch = collator(examples)
-
-    # Check that tensors are stacked
-    assert batch["input_ids"].shape == (2, 5)
-    assert batch["labels"].shape == (2, 5)
-    assert batch["loss_weight"].shape == (2, 5)
-
-    # Check that loss_weight is preserved
-    assert batch["loss_weight"].dtype == torch.float16

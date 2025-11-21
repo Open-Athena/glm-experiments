@@ -5,19 +5,23 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def loss_fn(logits: torch.Tensor, labels: torch.Tensor, loss_weight: torch.Tensor) -> torch.Tensor:
+def loss_fn(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    loss_weight: torch.Tensor,
+) -> torch.Tensor:
     """Compute weighted cross-entropy loss.
 
     Args:
         logits: Logits of shape (batch, seq_len, vocab_size)
-        labels: Target labels of shape (batch, seq_len)
+        labels: Target labels of shape (batch, seq_len), -100 for ignored positions
         loss_weight: Loss weights of shape (batch, seq_len)
 
     Returns:
         Scalar loss value
     """
     logits = logits.view(-1, logits.size(-1))
-    labels = labels.view(-1)
+    labels = labels.view(-1).long()
     loss_weight = loss_weight.view(-1)
     # Subset to positions where labels != -100 (ignore index)
     mask = labels != -100
@@ -63,13 +67,16 @@ class BERT(nn.Module):
         """Forward pass with loss calculation.
 
         Args:
-            input_ids: Input token IDs (with masks) of shape (batch, seq_len)
+            input_ids: Input token IDs (with masks) of shape (batch, seq_len), int8 or long
             labels: True token IDs of shape (batch, seq_len), -100 for non-masked
             loss_weight: Per-token loss weights of shape (batch, seq_len)
 
         Returns:
             Weighted cross-entropy loss (scalar)
         """
+        # Convert int8 to long for embedding lookup
+        input_ids = input_ids.long()
+
         # Embed
         x = self.embedder(input_ids)  # (batch, seq_len, hidden_dim)
 

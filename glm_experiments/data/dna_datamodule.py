@@ -1,19 +1,79 @@
 """Generic DataModule for DNA masked language modeling."""
 
-from typing import Optional
-
 import numpy as np
 import torch
 from Bio.Seq import Seq
 from datasets import load_dataset
 from datasets.distributed import split_dataset_by_node
 from lightning import LightningDataModule
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, default_collate
 from transformers import AutoTokenizer
 
-from glm_experiments.data.components.mlm_collator import (
-    DataCollatorForLanguageModelingSimplified,
-)
+
+def apply_reverse_complement(sequences: list[str]) -> list[str]:
+    """Apply random reverse complement augmentation to sequences.
+
+    Each sequence is independently randomly assigned to forward or reverse
+    complement strand with equal probability.
+
+    Args:
+        sequences: List of DNA sequences
+
+    Returns:
+        List of sequences, each randomly on forward or reverse complement strand
+    """
+    n = len(sequences)
+    strand = np.random.choice(["+", "-"], n)
+    return [
+        seq if strand[i] == "+" else str(Seq(seq).reverse_complement())
+        for i, seq in enumerate(sequences)
+    ]
+
+
+def apply_mlm_masking(
+    input_ids: torch.Tensor,
+    mask_token_id: int,
+    vocab_size: int,
+    mlm_probability: float = 0.15,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Apply masked language modeling to input tokens.
+
+    Uses standard BERT masking strategy:
+    - 15% of tokens are selected for masking
+    - Of those: 80% replaced with [MASK], 10% random token, 10% unchanged
+
+    Args:
+        input_ids: Token IDs of shape (batch_size, seq_len)
+        mask_token_id: Token ID for [MASK]
+        vocab_size: Vocabulary size for random replacement
+        mlm_probability: Probability of selecting a token for masking
+
+    Returns:
+        Tuple of (masked_input_ids, labels) both as int8.
+        Labels has -100 for non-masked positions (standard PyTorch ignore_index).
+    """
+    input_ids = input_ids.clone().to(torch.int8)
+    labels = input_ids.clone()
+
+    # Select tokens for masking
+    probability_matrix = torch.full(labels.shape, mlm_probability)
+    masked_indices = torch.bernoulli(probability_matrix).bool()
+    labels[~masked_indices] = -100  # standard PyTorch ignore_index
+
+    # 80% -> [MASK]
+    indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
+    input_ids[indices_replaced] = mask_token_id
+
+    # 10% -> random token (0.5 of remaining 20%)
+    indices_random = (
+        torch.bernoulli(torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
+    )
+    random_words = torch.randint(vocab_size, labels.shape, dtype=torch.int8)
+    input_ids[indices_random] = random_words[indices_random]
+
+    # 10% -> unchanged (implicit)
+
+    return input_ids, labels
 
 
 class DNADataModule(LightningDataModule):
@@ -60,7 +120,6 @@ class DNADataModule(LightningDataModule):
         self.tokenizer = None
         self.data_train = None
         self.data_val = None
-        self.data_collator = None
 
     def prepare_data(self) -> None:
         """Download data and tokenizer (runs on single GPU/process)."""
@@ -86,19 +145,19 @@ class DNADataModule(LightningDataModule):
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(self.hparams.tokenizer_name)  # nosec B615
 
-        # Create data collator for MLM
-        self.data_collator = DataCollatorForLanguageModelingSimplified(
-            tokenizer=self.tokenizer,
-            mlm=True,
-            mlm_probability=self.hparams.mlm_probability,
-        )
+        def tokenize(seq: list[str]) -> list[list[int]]:
+            """Tokenize sequences to input_ids only."""
+            return self.tokenizer(
+                seq,
+                padding=False,
+                truncation=False,
+                return_token_type_ids=False,
+                return_attention_mask=False,
+                return_special_tokens_mask=False,
+            )["input_ids"]
 
-        # Load raw dataset with streaming
-        raw_datasets = load_dataset(self.hparams.dataset_name, streaming=True)  # nosec B615
-
-        # Tokenization function
-        def tokenize_function(examples, soft_masked_weight, data_aug=False):
-            """Tokenize sequences with optional reverse complement augmentation.
+        def transform_batch(examples: dict, soft_masked_weight: float, data_aug: bool) -> dict:
+            """Transform a batch of examples.
 
             Args:
                 examples: Batch of examples with 'seq' field
@@ -106,66 +165,62 @@ class DNADataModule(LightningDataModule):
                 data_aug: Whether to apply reverse complement augmentation
 
             Returns:
-                Dictionary with input_ids (torch.uint8), special_tokens_mask, and
-                loss_weight (torch.float16)
+                Dictionary with input_ids, labels, and loss_weight (all tensors)
             """
             seq = examples["seq"]
 
             # Apply reverse complement augmentation
             if data_aug:
-                n = len(seq)
-                strand = np.random.choice(["+", "-"], n)
-                seq = [
-                    seq[i] if strand[i] == "+" else str(Seq(seq[i]).reverse_complement())
-                    for i in range(n)
-                ]
+                seq = apply_reverse_complement(seq)
 
-            # Tokenize (returns dict with 'input_ids' as list of lists)
-            tokenized = self.tokenizer(
-                seq,
-                return_special_tokens_mask=True,
-                padding=False,
-                truncation=False,
-            )
-
-            # Convert to tensors
-            input_ids = torch.tensor(tokenized["input_ids"], dtype=torch.uint8)
-            special_tokens_mask = torch.tensor(tokenized["special_tokens_mask"], dtype=torch.uint8)
+            # Tokenize
+            input_ids = torch.tensor(tokenize(seq), dtype=torch.int8)
 
             # Create loss weights (lower weight for soft-masked lowercase regions)
-            loss_weight = torch.ones_like(input_ids, dtype=torch.float16)
+            loss_weight = torch.ones(input_ids.shape, dtype=torch.float16)
             for i, s in enumerate(seq):
                 lowercase_mask = np.array([c.islower() for c in s])
                 loss_weight[i][lowercase_mask] = soft_masked_weight
 
+            # Apply MLM masking
+            input_ids, labels = apply_mlm_masking(
+                input_ids,
+                mask_token_id=self.tokenizer.mask_token_id,
+                vocab_size=self.tokenizer.vocab_size,
+                mlm_probability=self.hparams.mlm_probability,
+            )
+
             return {
                 "input_ids": input_ids,
-                "special_tokens_mask": special_tokens_mask,
+                "labels": labels,
                 "loss_weight": loss_weight,
             }
+
+        # Load raw dataset with streaming
+        raw_datasets = load_dataset(self.hparams.dataset_name, streaming=True)  # nosec B615
 
         # Process splits (train and val only)
         if stage == "fit" or stage is None:
             # Training dataset with augmentation and shuffling
             train_dataset = raw_datasets["train"].shuffle(seed=self.hparams.seed)
             train_dataset = train_dataset.map(
-                lambda ex: tokenize_function(
+                lambda ex: transform_batch(
                     ex,
-                    self.hparams.soft_masked_loss_weight_train,
+                    soft_masked_weight=self.hparams.soft_masked_loss_weight_train,
                     data_aug=self.hparams.data_augmentation,
                 ),
                 batched=True,
                 remove_columns=list(list(raw_datasets["train"].take(1))[0].keys()),
                 # drop_last_batch needed for torch.compile to avoid variable batch sizes
                 drop_last_batch=True,
-                batch_size=self.hparams.batch_size,
+                batch_size=self.batch_size_per_device,
             )
 
             # Validation dataset (no augmentation, no shuffling)
             val_dataset = raw_datasets["validation"].map(
-                lambda ex: tokenize_function(
+                lambda ex: transform_batch(
                     ex,
-                    self.hparams.soft_masked_loss_weight_eval,
+                    soft_masked_weight=self.hparams.soft_masked_loss_weight_eval,
                     data_aug=False,
                 ),
                 batched=True,
@@ -196,7 +251,7 @@ class DNADataModule(LightningDataModule):
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=False,  # Shuffling handled by dataset
-            collate_fn=self.data_collator,
+            collate_fn=default_collate,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -207,5 +262,5 @@ class DNADataModule(LightningDataModule):
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
-            collate_fn=self.data_collator,
+            collate_fn=default_collate,
         )
