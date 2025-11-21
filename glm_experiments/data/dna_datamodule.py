@@ -5,7 +5,6 @@ from typing import Any
 import numpy as np
 import torch
 from Bio.Seq import Seq
-from biofoundation.data import Genome
 from biofoundation.model.adapters.hf import HFTokenizer
 from datasets import load_dataset
 from datasets.distributed import split_dataset_by_node
@@ -133,7 +132,6 @@ class DNADataModule(LightningDataModule):
         self.data_train = None
         self.data_val = None
         self.data_val_traitgym = None
-        self.genome = None
 
     def prepare_data(self) -> None:
         """Download data and tokenizer (runs on single GPU/process)."""
@@ -274,10 +272,9 @@ class DNADataModule(LightningDataModule):
             evals = self.hparams.get("evals") or {}
             traitgym_cfg = evals.get("traitgym")
             if traitgym_cfg:
-                self.genome = Genome(traitgym_cfg["genome_path"])
                 self.data_val_traitgym = load_traitgym_dataset(
-                    genome=self.genome,
                     tokenizer=HFTokenizer(self.tokenizer),
+                    genome_path=traitgym_cfg["genome_path"],
                     dataset_name=traitgym_cfg.get("dataset_name", "songlab/TraitGym"),
                     dataset_config=traitgym_cfg.get("dataset_config", "mendelian_traits"),
                     window_size=traitgym_cfg.get("window_size", 512),

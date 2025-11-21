@@ -58,21 +58,14 @@ class BERT(nn.Module):
         self.decoder = decoder
         self.ln = nn.LayerNorm(embedder.embedding_dim)
 
-    def forward(
-        self,
-        input_ids: torch.Tensor,
-        labels: torch.Tensor,
-        loss_weight: torch.Tensor,
-    ) -> torch.Tensor:
-        """Forward pass with loss calculation.
+    def get_logits(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Compute logits from input token IDs.
 
         Args:
-            input_ids: Input token IDs (with masks) of shape (batch, seq_len), int8 or long
-            labels: True token IDs of shape (batch, seq_len), -100 for non-masked
-            loss_weight: Per-token loss weights of shape (batch, seq_len)
+            input_ids: Input token IDs of shape (batch, seq_len), int8 or long
 
         Returns:
-            Weighted cross-entropy loss (scalar)
+            Logits of shape (batch, seq_len, vocab_size)
         """
         # Convert int8 to long for embedding lookup
         input_ids = input_ids.long()
@@ -89,7 +82,24 @@ class BERT(nn.Module):
         # Decode to vocabulary
         logits = self.decoder(x)  # (batch, seq_len, vocab_size)
 
-        # Compute loss
-        loss = loss_fn(logits, labels, loss_weight)
+        return logits
 
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        labels: torch.Tensor,
+        loss_weight: torch.Tensor,
+    ) -> torch.Tensor:
+        """Forward pass with loss calculation.
+
+        Args:
+            input_ids: Input token IDs (with masks) of shape (batch, seq_len), int8 or long
+            labels: True token IDs of shape (batch, seq_len), -100 for non-masked
+            loss_weight: Per-token loss weights of shape (batch, seq_len)
+
+        Returns:
+            Weighted cross-entropy loss (scalar)
+        """
+        logits = self.get_logits(input_ids)
+        loss = loss_fn(logits, labels, loss_weight)
         return loss

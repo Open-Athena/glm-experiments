@@ -3,9 +3,8 @@
 import pytest
 import torch
 from hydra import compose, initialize
-from omegaconf import OmegaConf
 
-from glm_experiments.models.bert_lit_module import BERTLitModule
+from glm_experiments.models.bert_lit_module import BERTLitModule, MaskedLMAdapter
 
 
 @pytest.fixture
@@ -14,14 +13,9 @@ def bert_lit_module():
     with initialize(version_base="1.3", config_path="../configs"):
         cfg = compose(config_name="train", overrides=["model=bert_bytenet_small"])
 
-    # Instantiate model
-    model = BERTLitModule(
-        net=torch.nn.Module(),  # Dummy for now
-        optimizer=cfg.model.optimizer,
-        scheduler=cfg.model.scheduler,
-        compile=False,
-    )
-    return model
+    import hydra
+
+    return hydra.utils.instantiate(cfg.model)
 
 
 def test_bert_lit_module_instantiation():
@@ -144,6 +138,74 @@ def test_bert_lit_module_save_hyperparameters():
     assert hasattr(model, "hparams")
     assert "optimizer" in model.hparams
     assert "scheduler" in model.hparams
-    assert "compile" in model.hparams
     # net should NOT be in hparams
     assert "net" not in model.hparams
+
+
+def test_masked_lm_adapter(bert_lit_module):
+    """Test MaskedLMAdapter returns logits from BERT model."""
+    adapter = bert_lit_module.mlm_adapter
+
+    batch_size = 2
+    seq_len = 100
+    input_ids = torch.randint(0, 7, (batch_size, seq_len))
+
+    logits = adapter(input_ids)
+
+    assert logits.shape == (batch_size, seq_len, 7)  # vocab_size=7
+    assert logits.dtype == torch.float32
+
+
+def test_validation_step_traitgym(bert_lit_module):
+    """Test validation_step with TraitGym batch (dataloader_idx=1)."""
+    batch_size = 4
+    seq_len = 512
+
+    # Create TraitGym-style batch
+    batch = {
+        "input_ids": torch.randint(0, 7, (batch_size, seq_len)),
+        "pos": torch.full((batch_size,), 256),  # Center position
+        "ref": torch.randint(1, 5, (batch_size,)),  # Token IDs for A, C, G, T
+        "alt": torch.randint(1, 5, (batch_size,)),
+        "label": torch.randint(0, 2, (batch_size,)),  # Binary labels
+    }
+
+    # Run validation step with dataloader_idx=1 (TraitGym)
+    bert_lit_module.validation_step(batch, batch_idx=0, dataloader_idx=1)
+
+    # Check that metrics were updated
+    assert bert_lit_module.traitgym_scores.update_count == 1
+    assert bert_lit_module.traitgym_labels.update_count == 1
+
+
+def test_on_validation_epoch_end_computes_auprc(bert_lit_module):
+    """Test on_validation_epoch_end computes AUPRC from accumulated data."""
+    # Simulate accumulated data from multiple batches
+    scores = torch.tensor([0.1, 0.4, 0.6, 0.9])
+    labels = torch.tensor([0, 0, 1, 1])
+
+    bert_lit_module.traitgym_scores.update(scores)
+    bert_lit_module.traitgym_labels.update(labels)
+
+    # Run epoch end
+    bert_lit_module.on_validation_epoch_end()
+
+    # Metrics should be reset after computation
+    assert bert_lit_module.traitgym_scores.update_count == 0
+    assert bert_lit_module.traitgym_labels.update_count == 0
+
+
+def test_validation_step_mlm_still_works(bert_lit_module):
+    """Test that MLM validation (dataloader_idx=0) still works."""
+    batch_size = 2
+    seq_len = 100
+
+    batch = {
+        "input_ids": torch.randint(0, 7, (batch_size, seq_len)),
+        "labels": torch.randint(0, 7, (batch_size, seq_len)),
+        "loss_weight": torch.ones(batch_size, seq_len),
+    }
+
+    # Should not raise
+    result = bert_lit_module.validation_step(batch, batch_idx=0, dataloader_idx=0)
+    assert result is None

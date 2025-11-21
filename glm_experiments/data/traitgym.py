@@ -4,6 +4,7 @@ This module provides functions to load and transform the TraitGym dataset
 for variant effect prediction evaluation during training.
 """
 
+import logging
 import urllib.request
 from functools import partial
 from pathlib import Path
@@ -11,6 +12,8 @@ from pathlib import Path
 from biofoundation.data import Genome, transform_llr_mlm
 from biofoundation.model.base import Tokenizer
 from datasets import Dataset, load_dataset
+
+log = logging.getLogger(__name__)
 
 
 def download_genome(url: str, path: str | Path) -> Path:
@@ -33,32 +36,53 @@ def download_genome(url: str, path: str | Path) -> Path:
 
 
 def load_traitgym_dataset(
-    genome: Genome,
     tokenizer: Tokenizer,
+    genome_path: str | Path,
     dataset_name: str = "songlab/TraitGym",
     dataset_config: str = "mendelian_traits",
     window_size: int = 512,
+    cache_dir: str | Path = "data/traitgym_cache",
 ) -> Dataset:
     """Load and transform TraitGym dataset for variant effect prediction.
 
     Loads the TraitGym dataset from HuggingFace and applies the transform_llr_mlm
     transformation to prepare examples for masked language model evaluation.
 
+    The Genome is only loaded if the transformed dataset is not cached.
+
     Args:
-        genome: Genome object for sequence extraction
         tokenizer: Tokenizer implementing the biofoundation Tokenizer protocol
+        genome_path: Path to the reference genome file
         dataset_name: HuggingFace dataset name
         dataset_config: Dataset configuration (e.g., "mendelian_traits")
         window_size: Size of the window around variants (must be even)
+        cache_dir: Directory to cache transformed dataset
 
     Returns:
         Transformed dataset with columns: input_ids, pos, ref, alt, label
     """
-    # Load raw dataset
+    from datasets import load_from_disk
+
+    # Create cache path based on config
+    cache_path = Path(cache_dir) / f"{dataset_config}_window{window_size}"
+
+    # Check if cached transformed dataset exists
+    if cache_path.exists():
+        log.info(f"Loading cached TraitGym dataset from {cache_path}")
+        dataset = load_from_disk(str(cache_path))
+        dataset.set_format(type="torch")
+        return dataset
+
+    # Not cached - need to transform with genome
+    log.info(f"Loading TraitGym dataset: {dataset_name}/{dataset_config}")
     dataset = load_dataset(dataset_name, dataset_config, split="test")  # nosec B615
 
-    # Apply transform_llr_mlm to each example
-    # This extracts a window around each variant and masks the reference position
+    log.info(f"Loading reference genome from {genome_path} (this may take a minute)...")
+    genome = Genome(genome_path)
+
+    # We need to keep the label column for evaluation
+    original_columns = dataset.column_names
+
     transform_fn = partial(
         transform_llr_mlm,
         tokenizer=tokenizer,
@@ -66,13 +90,19 @@ def load_traitgym_dataset(
         window_size=window_size,
     )
 
-    # We need to keep the label column for evaluation
-    original_columns = dataset.column_names
-
     # Transform the dataset
+    log.info("Transforming TraitGym dataset...")
     dataset = dataset.map(
         transform_fn,
         remove_columns=[c for c in original_columns if c != "label"],
     )
+
+    # Save to cache
+    log.info(f"Saving transformed dataset to {cache_path}")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    dataset.save_to_disk(str(cache_path))
+
+    # Set format to PyTorch tensors for proper DataLoader collation
+    dataset.set_format(type="torch")
 
     return dataset

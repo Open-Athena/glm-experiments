@@ -146,14 +146,11 @@ class TestLoadTraitgymDataset:
 
         Requires the reference genome to be downloaded first.
         """
-        from biofoundation.data import Genome
         from datasets import Dataset
 
-        genome = Genome("data/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz")
-
         dataset = load_traitgym_dataset(
-            genome=genome,
             tokenizer=tokenizer_adapter,
+            genome_path="data/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
             dataset_name="songlab/TraitGym",
             dataset_config="mendelian_traits",
             window_size=512,

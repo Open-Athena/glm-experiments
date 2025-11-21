@@ -3,7 +3,27 @@
 from typing import Any
 
 import torch
+import torch.nn as nn
+from biofoundation.model.scoring import compute_llr_mlm
 from lightning import LightningModule
+from sklearn.metrics import average_precision_score
+from torchmetrics.aggregation import CatMetric
+
+
+class MaskedLMAdapter(nn.Module):
+    """Adapter to make BERT compatible with biofoundation's MaskedLM protocol.
+
+    biofoundation's compute_llr_mlm expects a model with forward(input_ids) -> logits,
+    but our BERT model has get_logits(input_ids) -> logits.
+    """
+
+    def __init__(self, bert: nn.Module):
+        super().__init__()
+        self.bert = bert
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Forward pass returning logits (MaskedLM protocol)."""
+        return self.bert.get_logits(input_ids)
 
 
 class BERTLitModule(LightningModule):
@@ -27,6 +47,13 @@ class BERTLitModule(LightningModule):
         self.save_hyperparameters(ignore=["net"], logger=False)
 
         self.net = net
+
+        # Adapter for biofoundation's compute_llr_mlm
+        self.mlm_adapter = MaskedLMAdapter(net)
+
+        # CatMetrics for TraitGym VEP evaluation
+        self.traitgym_labels = CatMetric()
+        self.traitgym_scores = CatMetric()
 
     def forward(self, input_ids: torch.Tensor, labels: torch.Tensor, loss_weight: torch.Tensor):
         """Forward pass through model."""
@@ -54,10 +81,46 @@ class BERTLitModule(LightningModule):
         self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
-    def validation_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> None:
-        """Validation step."""
-        loss = self.model_step(batch)
-        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+    def validation_step(
+        self, batch: dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
+    ) -> None:
+        """Validation step for MLM and TraitGym dataloaders.
+
+        Args:
+            batch: Batch dict (keys depend on dataloader)
+            batch_idx: Batch index
+            dataloader_idx: 0 for MLM validation, 1 for TraitGym
+        """
+        if dataloader_idx == 0:
+            # MLM validation
+            loss = self.model_step(batch)
+            self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        elif dataloader_idx == 1:
+            # TraitGym VEP evaluation
+            # Data comes as PyTorch tensors from HuggingFace dataset with set_format("torch")
+            scores = -1 * compute_llr_mlm(
+                model=self.mlm_adapter,
+                input_ids=batch["input_ids"],
+                pos=batch["pos"],
+                ref=batch["ref"],
+                alt=batch["alt"],
+            )
+            self.traitgym_scores.update(scores)
+            self.traitgym_labels.update(batch["label"])
+
+    def on_validation_epoch_end(self) -> None:
+        """Compute and log TraitGym AUPRC at end of validation epoch."""
+        # Only compute if we have TraitGym data
+        if self.traitgym_scores.update_count > 0:
+            scores = self.traitgym_scores.compute().cpu().numpy()
+            labels = self.traitgym_labels.compute().cpu().numpy()
+
+            auprc = average_precision_score(labels, scores)
+            self.log("val/traitgym_auprc", auprc, prog_bar=True)
+
+            # Reset metrics for next epoch
+            self.traitgym_scores.reset()
+            self.traitgym_labels.reset()
 
     def configure_optimizers(self) -> dict[str, Any]:
         """Configure optimizer and scheduler."""
