@@ -307,7 +307,7 @@ def test_hydra_instantiation():
 
         # Check that it's the right type
         assert isinstance(dm, DNADataModule)
-        assert dm.hparams.dataset_name == "songlab/gpn-animal-promoter-dataset"
+        assert dm.hparams.dataset_name == "data/gpn-animal-promoter-dataset"
         assert dm.hparams.tokenizer_name == "gonzalobenegas/tokenizer-dna-mlm"
         assert dm.hparams.batch_size == 2048
         assert dm.hparams.mlm_probability == 0.15

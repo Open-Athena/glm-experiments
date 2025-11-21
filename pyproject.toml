@@ -38,6 +38,7 @@ dependencies = [
     "biopython>=1.81",
     "zstandard>=0.18.0",
     "wandb>=0.23.0",
+    "biofoundation @ git+https://github.com/Open-Athena/biofoundation.git@d3865288bbb4b5ab814df85599381f206e375fe6",
 ]
 
 [dependency-groups]
@@ -49,6 +50,9 @@ dev = [
 [project.scripts]
 train_command = "glm_experiments.train:main"
 eval_command = "glm_experiments.eval:main"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatchling.build]
 packages = ["glm_experiments"]
