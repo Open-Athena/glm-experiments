@@ -1,7 +1,7 @@
 _target_: glm_experiments.data.dna_datamodule.DNADataModule
 
 # Dataset and tokenizer (override in specific configs)
-dataset_name: songlab/gpn-animal-promoter-dataset
+dataset_name: data/gpn-animal-promoter-dataset
 tokenizer_name: gonzalobenegas/tokenizer-dna-mlm
 
 # Batch size (total across all devices, will be divided by world_size)

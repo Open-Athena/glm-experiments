@@ -69,6 +69,12 @@ make test
 make test-full
 ```
 
+## Download dataset locally
+
+```bash
+uv run hf download songlab/gpn-animal-promoter-dataset --repo-type dataset --local-dir data/gpn-animal-promoter-dataset
+```
+
 ## How to run
 
 Train model with default configuration
