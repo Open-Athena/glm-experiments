@@ -45,7 +45,7 @@ class ByteNetLayer(nn.Module):
         kernel_size: Convolution kernel size
         dilation: Dilation rate for dilated convolution
         slim: If True, use hidden_size//2 for intermediate size (default: True)
-        bias: Whether to use bias in layers (default: None, which means True)
+        bias: Whether to use bias in layers (default: True)
         groups: Number of groups for grouped convolution (default: 1)
     """
 
@@ -55,7 +55,7 @@ class ByteNetLayer(nn.Module):
         kernel_size: int,
         dilation: int,
         slim: bool = True,
-        bias: bool | None = None,
+        bias: bool = True,
         groups: int = 1,
     ):
         super().__init__()
@@ -116,6 +116,7 @@ class ByteNet(nn.Module):
         dilation_cycle: int = 8,
         first_kernel_size: int = 9,
         rest_kernel_size: int = 5,
+        bias: bool = True,
     ):
         super().__init__()
 
@@ -133,6 +134,7 @@ class ByteNet(nn.Module):
                     kernel_size=kernel_sizes[i],
                     dilation=dilations[i],
                     slim=slim,
+                    bias=bias,
                 )
                 for i in range(n_layers)
             ]

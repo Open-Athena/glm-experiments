@@ -12,8 +12,9 @@ def bert_model():
     """Create a small BERT model for testing."""
     embedder = torch.nn.Embedding(num_embeddings=6, embedding_dim=128, padding_idx=0)
     encoder = ByteNet(hidden_size=128, n_layers=4, slim=True)
+    layer_norm = torch.nn.LayerNorm(128)
     decoder = torch.nn.Linear(in_features=128, out_features=6)
-    return BERT(embedder=embedder, encoder=encoder, decoder=decoder)
+    return BERT(embedder=embedder, encoder=encoder, layer_norm=layer_norm, decoder=decoder)
 
 
 def test_bert_embed(bert_model):
@@ -77,8 +78,9 @@ def test_bert_no_masked_positions():
     """Test BERT when no positions are masked (all labels = -100)."""
     embedder = torch.nn.Embedding(num_embeddings=6, embedding_dim=128, padding_idx=0)
     encoder = ByteNet(hidden_size=128, n_layers=2, slim=True)
+    layer_norm = torch.nn.LayerNorm(128)
     decoder = torch.nn.Linear(in_features=128, out_features=6)
-    model = BERT(embedder=embedder, encoder=encoder, decoder=decoder)
+    model = BERT(embedder=embedder, encoder=encoder, layer_norm=layer_norm, decoder=decoder)
 
     batch_size = 2
     seq_len = 50
@@ -96,8 +98,9 @@ def test_bert_all_masked_positions():
     """Test BERT when all positions are masked."""
     embedder = torch.nn.Embedding(num_embeddings=6, embedding_dim=128, padding_idx=0)
     encoder = ByteNet(hidden_size=128, n_layers=2, slim=True)
+    layer_norm = torch.nn.LayerNorm(128)
     decoder = torch.nn.Linear(in_features=128, out_features=6)
-    model = BERT(embedder=embedder, encoder=encoder, decoder=decoder)
+    model = BERT(embedder=embedder, encoder=encoder, layer_norm=layer_norm, decoder=decoder)
 
     batch_size = 2
     seq_len = 50
@@ -116,8 +119,9 @@ def test_bert_batch_size_one():
     """Test BERT with batch size of 1."""
     embedder = torch.nn.Embedding(num_embeddings=6, embedding_dim=128, padding_idx=0)
     encoder = ByteNet(hidden_size=128, n_layers=2, slim=True)
+    layer_norm = torch.nn.LayerNorm(128)
     decoder = torch.nn.Linear(in_features=128, out_features=6)
-    model = BERT(embedder=embedder, encoder=encoder, decoder=decoder)
+    model = BERT(embedder=embedder, encoder=encoder, layer_norm=layer_norm, decoder=decoder)
 
     input_ids = torch.randint(0, 6, (1, 50))
     labels = torch.randint(0, 6, (1, 50))

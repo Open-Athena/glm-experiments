@@ -43,6 +43,7 @@ class BERT(nn.Module):
     Args:
         embedder: Token embedding layer (nn.Embedding)
         encoder: Encoder (e.g., ByteNet)
+        layer_norm: Layer normalization module
         decoder: Output projection layer (nn.Linear)
     """
 
@@ -50,13 +51,14 @@ class BERT(nn.Module):
         self,
         embedder: nn.Embedding,
         encoder: nn.Module,
+        layer_norm: nn.Module,
         decoder: nn.Linear,
     ):
         super().__init__()
         self.embedder = embedder
         self.encoder = encoder
+        self.layer_norm = layer_norm
         self.decoder = decoder
-        self.ln = nn.LayerNorm(embedder.embedding_dim)
 
     def get_logits(self, input_ids: torch.Tensor) -> torch.Tensor:
         """Compute logits from input token IDs.
@@ -77,7 +79,7 @@ class BERT(nn.Module):
         x = self.encoder(x)  # (batch, seq_len, hidden_dim)
 
         # Layer norm
-        x = self.ln(x)  # (batch, seq_len, hidden_dim)
+        x = self.layer_norm(x)  # (batch, seq_len, hidden_dim)
 
         # Decode to vocabulary
         logits = self.decoder(x)  # (batch, seq_len, vocab_size)

@@ -11,6 +11,7 @@ accelerator: gpu
 devices: 1
 
 precision: bf16-mixed
+gradient_clip_val: 1.0
 
 # set True to to ensure deterministic results
 # makes training slower but gives more reproducibility than just setting seeds
