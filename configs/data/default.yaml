@@ -25,7 +25,7 @@ seed: 42
 # Evaluation datasets (optional)
 # Set evals: null to disable all evals, or configure specific evals below
 evals:
-  traitgym:
+  traitgym_mendelian_promoter:
     dataset_name: songlab/TraitGym
     dataset_config: mendelian_traits
     genome_url: https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz

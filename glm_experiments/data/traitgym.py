@@ -1,7 +1,8 @@
-"""TraitGym variant dataset loading for evaluation.
+"""TraitGym Mendelian Promoter variant dataset loading for evaluation.
 
 This module provides functions to load and transform the TraitGym dataset
-for variant effect prediction evaluation during training.
+(filtered to non-exonic proximal promoter variants) for variant effect
+prediction evaluation during training.
 """
 
 import logging
@@ -9,6 +10,7 @@ import urllib.request
 from functools import partial
 from pathlib import Path
 
+import pandas as pd
 from biofoundation.data import Genome, transform_llr_mlm
 from biofoundation.model.base import Tokenizer
 from datasets import Dataset, load_dataset
@@ -35,7 +37,7 @@ def download_genome(url: str, path: str | Path) -> Path:
     return path
 
 
-def load_traitgym_dataset(
+def load_traitgym_mendelian_promoter_dataset(
     tokenizer: Tokenizer,
     genome_path: str | Path,
     dataset_name: str = "songlab/TraitGym",
@@ -43,10 +45,11 @@ def load_traitgym_dataset(
     window_size: int = 512,
     cache_dir: str | Path = "data/traitgym_cache",
 ) -> Dataset:
-    """Load and transform TraitGym dataset for variant effect prediction.
+    """Load and transform TraitGym Mendelian Promoter dataset for variant effect prediction.
 
-    Loads the TraitGym dataset from HuggingFace and applies the transform_llr_mlm
-    transformation to prepare examples for masked language model evaluation.
+    Loads the TraitGym dataset from HuggingFace, filters to non-exonic proximal
+    promoter variants, and applies the transform_llr_mlm transformation to prepare
+    examples for masked language model evaluation.
 
     The Genome is only loaded if the transformed dataset is not cached.
 
@@ -63,12 +66,12 @@ def load_traitgym_dataset(
     """
     from datasets import load_from_disk
 
-    # Create cache path based on config
-    cache_path = Path(cache_dir) / f"{dataset_config}_window{window_size}"
+    # Create cache path based on config (use mendelian_promoter suffix to distinguish)
+    cache_path = Path(cache_dir) / f"{dataset_config}_mendelian_promoter_window{window_size}"
 
     # Check if cached transformed dataset exists
     if cache_path.exists():
-        log.info(f"Loading cached TraitGym dataset from {cache_path}")
+        log.info(f"Loading cached TraitGym Mendelian Promoter dataset from {cache_path}")
         dataset = load_from_disk(str(cache_path))
         dataset.set_format(type="torch")
         return dataset
@@ -76,6 +79,18 @@ def load_traitgym_dataset(
     # Not cached - need to transform with genome
     log.info(f"Loading TraitGym dataset: {dataset_name}/{dataset_config}")
     dataset = load_dataset(dataset_name, dataset_config, split="test")  # nosec B615
+
+    # Filter to non-exonic proximal promoter variants
+    log.info("Filtering to non-exonic proximal promoter variants...")
+    subset_url = (
+        "https://huggingface.co/datasets/songlab/TraitGym/resolve/main/"
+        "mendelian_traits_matched_9/subset/nonexonic_AND_proximal.parquet"
+    )
+    V = dataset.to_pandas()
+    subset = pd.read_parquet(subset_url)
+    V = V.merge(subset, on=["chrom", "pos", "ref", "alt"], how="inner")
+    log.info(f"Filtered dataset size: {len(V)} variants (from {len(dataset)})")
+    dataset = Dataset.from_pandas(V, preserve_index=False)
 
     log.info(f"Loading reference genome from {genome_path} (this may take a minute)...")
     genome = Genome(genome_path)
@@ -91,7 +106,7 @@ def load_traitgym_dataset(
     )
 
     # Transform the dataset
-    log.info("Transforming TraitGym dataset...")
+    log.info("Transforming TraitGym Mendelian Promoter dataset...")
     dataset = dataset.map(
         transform_fn,
         remove_columns=[c for c in original_columns if c != "label"],

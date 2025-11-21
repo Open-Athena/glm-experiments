@@ -1,4 +1,4 @@
-"""Tests for TraitGym variant dataset loading."""
+"""Tests for TraitGym Mendelian Promoter variant dataset loading."""
 
 import tempfile
 from pathlib import Path
@@ -11,7 +11,7 @@ from transformers import AutoTokenizer
 
 from glm_experiments.data.traitgym import (
     download_genome,
-    load_traitgym_dataset,
+    load_traitgym_mendelian_promoter_dataset,
 )
 
 
@@ -101,12 +101,12 @@ class TestDownloadGenome:
                 assert test_path.parent.exists()
 
 
-class TestLoadTraitgymDataset:
-    """Tests for load_traitgym_dataset function.
+class TestLoadTraitgymMendelianPromoterDataset:
+    """Tests for load_traitgym_mendelian_promoter_dataset function.
 
     Note: Tests that require the real genome file are marked with @pytest.mark.slow
     and require the genome to be downloaded first. These tests verify end-to-end
-    functionality with real TraitGym data.
+    functionality with real TraitGym Mendelian Promoter data.
 
     Unit tests use mocks to test the data loading logic without the genome dependency.
     """
@@ -141,14 +141,14 @@ class TestLoadTraitgymDataset:
         not Path("data/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz").exists(),
         reason="Reference genome not downloaded. Run prepare_data() first.",
     )
-    def test_load_traitgym_dataset_with_real_genome(self, tokenizer_adapter):
-        """Test load_traitgym_dataset with real genome file.
+    def test_load_traitgym_mendelian_promoter_dataset_with_real_genome(self, tokenizer_adapter):
+        """Test load_traitgym_mendelian_promoter_dataset with real genome file.
 
         Requires the reference genome to be downloaded first.
         """
         from datasets import Dataset
 
-        dataset = load_traitgym_dataset(
+        dataset = load_traitgym_mendelian_promoter_dataset(
             tokenizer=tokenizer_adapter,
             genome_path="data/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
             dataset_name="songlab/TraitGym",
@@ -173,24 +173,24 @@ class TestLoadTraitgymDataset:
         input_ids = example["input_ids"]
         assert len(input_ids) == 512
 
-        # Check pos is an integer in valid range
-        assert isinstance(example["pos"], int)
-        assert example["pos"] == 256  # Center position for window_size=512
+        # Check pos is a tensor in valid range (set_format("torch") returns tensors)
+        assert isinstance(example["pos"], torch.Tensor)
+        assert example["pos"].item() == 256  # Center position for window_size=512
 
-        # Check ref and alt are integers (token IDs)
-        assert isinstance(example["ref"], int)
-        assert isinstance(example["alt"], int)
+        # Check ref and alt are tensors (token IDs)
+        assert isinstance(example["ref"], torch.Tensor)
+        assert isinstance(example["alt"], torch.Tensor)
 
 
-class TestDNADataModuleWithTraitGym:
-    """Tests for DNADataModule with TraitGym evaluation."""
+class TestDNADataModuleWithTraitGymMendelianPromoter:
+    """Tests for DNADataModule with TraitGym Mendelian Promoter evaluation."""
 
     def test_datamodule_accepts_evals_config(self):
         """Test that DNADataModule accepts evals config parameter."""
         from glm_experiments.data.dna_datamodule import DNADataModule
 
         evals_config = {
-            "traitgym": {
+            "traitgym_mendelian_promoter": {
                 "dataset_name": "songlab/TraitGym",
                 "dataset_config": "mendelian_traits",
                 "genome_url": "http://example.com/genome.fa.gz",
@@ -211,7 +211,7 @@ class TestDNADataModuleWithTraitGym:
         dm = DNADataModule()
 
         assert dm.hparams.evals is None
-        assert dm.data_val_traitgym is None
+        assert dm.data_val_traitgym_mendelian_promoter is None
 
     def test_val_dataloader_returns_single_loader_without_evals(self):
         """Test that val_dataloader returns single DataLoader without evals."""
@@ -227,7 +227,7 @@ class TestDNADataModuleWithTraitGym:
 
         # Mock the data_val attribute
         dm.data_val = [{"input_ids": torch.zeros(10), "labels": torch.zeros(10)}]
-        dm.data_val_traitgym = None
+        dm.data_val_traitgym_mendelian_promoter = None
         dm.batch_size_per_device = 32
 
         result = dm.val_dataloader()
@@ -241,7 +241,7 @@ class TestDNADataModuleWithTraitGym:
         from glm_experiments.data.dna_datamodule import DNADataModule
 
         evals_config = {
-            "traitgym": {
+            "traitgym_mendelian_promoter": {
                 "batch_size": 128,
             }
         }
@@ -254,7 +254,7 @@ class TestDNADataModuleWithTraitGym:
 
         # Mock the data attributes
         dm.data_val = [{"input_ids": torch.zeros(10), "labels": torch.zeros(10)}]
-        dm.data_val_traitgym = [
+        dm.data_val_traitgym_mendelian_promoter = [
             {"input_ids": torch.zeros(512), "pos": 256, "ref": 1, "alt": 2, "label": 0}
         ]
         dm.batch_size_per_device = 32
@@ -287,6 +287,9 @@ class TestDNADataModuleWithTraitGym:
 
             # Check evals config is present
             assert dm.hparams.evals is not None
-            assert "traitgym" in dm.hparams.evals
-            assert dm.hparams.evals["traitgym"]["dataset_name"] == "songlab/TraitGym"
-            assert dm.hparams.evals["traitgym"]["window_size"] == 512
+            assert "traitgym_mendelian_promoter" in dm.hparams.evals
+            assert (
+                dm.hparams.evals["traitgym_mendelian_promoter"]["dataset_name"]
+                == "songlab/TraitGym"
+            )
+            assert dm.hparams.evals["traitgym_mendelian_promoter"]["window_size"] == 512

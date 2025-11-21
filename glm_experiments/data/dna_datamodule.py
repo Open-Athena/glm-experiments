@@ -14,7 +14,7 @@ from transformers import AutoTokenizer
 
 from glm_experiments.data.traitgym import (
     download_genome,
-    load_traitgym_dataset,
+    load_traitgym_mendelian_promoter_dataset,
 )
 
 
@@ -131,7 +131,7 @@ class DNADataModule(LightningDataModule):
         self.tokenizer = None
         self.data_train = None
         self.data_val = None
-        self.data_val_traitgym = None
+        self.data_val_traitgym_mendelian_promoter = None
 
     def prepare_data(self) -> None:
         """Download data and tokenizer (runs on single GPU/process)."""
@@ -139,9 +139,9 @@ class DNADataModule(LightningDataModule):
         # Download tokenizer only
         AutoTokenizer.from_pretrained(self.hparams.tokenizer_name)  # nosec B615
 
-        # Download reference genome for TraitGym evaluation if configured
+        # Download reference genome for TraitGym Mendelian Promoter evaluation if configured
         evals = self.hparams.get("evals") or {}
-        traitgym_cfg = evals.get("traitgym")
+        traitgym_cfg = evals.get("traitgym_mendelian_promoter")
         if traitgym_cfg:
             download_genome(
                 url=traitgym_cfg["genome_url"],
@@ -268,16 +268,18 @@ class DNADataModule(LightningDataModule):
             self.data_train = train_dataset
             self.data_val = val_dataset
 
-            # Load TraitGym evaluation dataset if configured
+            # Load TraitGym Mendelian Promoter evaluation dataset if configured
             evals = self.hparams.get("evals") or {}
-            traitgym_cfg = evals.get("traitgym")
+            traitgym_cfg = evals.get("traitgym_mendelian_promoter")
             if traitgym_cfg:
-                self.data_val_traitgym = load_traitgym_dataset(
-                    tokenizer=HFTokenizer(self.tokenizer),
-                    genome_path=traitgym_cfg["genome_path"],
-                    dataset_name=traitgym_cfg.get("dataset_name", "songlab/TraitGym"),
-                    dataset_config=traitgym_cfg.get("dataset_config", "mendelian_traits"),
-                    window_size=traitgym_cfg.get("window_size", 512),
+                self.data_val_traitgym_mendelian_promoter = (
+                    load_traitgym_mendelian_promoter_dataset(
+                        tokenizer=HFTokenizer(self.tokenizer),
+                        genome_path=traitgym_cfg["genome_path"],
+                        dataset_name=traitgym_cfg.get("dataset_name", "songlab/TraitGym"),
+                        dataset_config=traitgym_cfg.get("dataset_config", "mendelian_traits"),
+                        window_size=traitgym_cfg.get("window_size", 512),
+                    )
                 )
 
     def train_dataloader(self) -> DataLoader:
@@ -306,14 +308,14 @@ class DNADataModule(LightningDataModule):
             collate_fn=default_collate,
         )
 
-        if self.data_val_traitgym is not None:
+        if self.data_val_traitgym_mendelian_promoter is not None:
             # Get batch size from config, default to 128
             evals = self.hparams.get("evals") or {}
-            traitgym_cfg = evals.get("traitgym", {})
+            traitgym_cfg = evals.get("traitgym_mendelian_promoter", {})
             traitgym_batch_size = traitgym_cfg.get("batch_size", 128)
 
             traitgym_loader = DataLoader(
-                dataset=self.data_val_traitgym,
+                dataset=self.data_val_traitgym_mendelian_promoter,
                 batch_size=traitgym_batch_size,
                 num_workers=self.hparams.num_workers,
                 pin_memory=self.hparams.pin_memory,
