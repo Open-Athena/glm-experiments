@@ -1,5 +1,6 @@
 defaults:
   - default
 
-batch_size: 2048
+batch_size: 2048 # Total effective batch size
+per_device_batch_size: 128 # Batch size per device (adjust based on GPU memory)
 num_workers: 8

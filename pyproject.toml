@@ -7,7 +7,7 @@ name = "glm-experiments"
 version = "0.0.1"
 description = "gLM experiments"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 license = {text = "MIT"}
 authors = [
     {name = "Gonzalo Benegas", email = "gonzalo.benegas@openathena.ai"},

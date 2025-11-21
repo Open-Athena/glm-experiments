@@ -4,8 +4,9 @@ _target_: glm_experiments.data.dna_datamodule.DNADataModule
 dataset_name: data/gpn-animal-promoter-dataset
 tokenizer_name: gonzalobenegas/tokenizer-dna-mlm
 
-# Batch size (total across all devices, will be divided by world_size)
-batch_size: 32
+# Batch size configuration
+batch_size: 32 # Total effective batch size (for gradient accumulation calculation)
+per_device_batch_size: 32 # Batch size per device (what fits in GPU memory)
 num_workers: 4
 pin_memory: true
 

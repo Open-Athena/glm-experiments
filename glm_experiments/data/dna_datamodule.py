@@ -16,6 +16,9 @@ from glm_experiments.data.traitgym import (
     download_genome,
     load_traitgym_mendelian_promoter_dataset,
 )
+from glm_experiments.utils.pylogger import RankedLogger
+
+log = RankedLogger(__name__, rank_zero_only=True)
 
 
 def apply_reverse_complement(sequences: list[str]) -> list[str]:
@@ -97,7 +100,8 @@ class DNADataModule(LightningDataModule):
     Args:
         dataset_name: HuggingFace dataset name
         tokenizer_name: HuggingFace tokenizer name
-        batch_size: Total batch size across all devices (will be divided by world_size)
+        batch_size: Total effective batch size (used for gradient accumulation calculation)
+        per_device_batch_size: Batch size per device (what fits in GPU memory)
         num_workers: Number of workers for data loading
         pin_memory: Whether to pin memory for faster GPU transfer
         mlm_probability: Probability of masking tokens (default: 0.15)
@@ -111,7 +115,8 @@ class DNADataModule(LightningDataModule):
         self,
         dataset_name: str = "songlab/gpn-animal-promoter-dataset",
         tokenizer_name: str = "gonzalobenegas/tokenizer-dna-mlm",
-        batch_size: int = 2048,  # Total batch size
+        batch_size: int = 2048,  # Total effective batch size
+        per_device_batch_size: int = 256,  # Batch size that fits in GPU memory
         num_workers: int = 8,
         pin_memory: bool = True,
         mlm_probability: float = 0.15,
@@ -124,8 +129,8 @@ class DNADataModule(LightningDataModule):
         super().__init__()
         self.save_hyperparameters(logger=False)
 
-        # Will be set in setup() based on world_size
-        self.batch_size_per_device = batch_size
+        # Used in DataLoader
+        self.batch_size_per_device = per_device_batch_size
 
         # Will be initialized in prepare_data/setup
         self.tokenizer = None
@@ -158,14 +163,30 @@ class DNADataModule(LightningDataModule):
         # that PyTorch DataLoader uses to seed each worker
         torch.manual_seed(self.hparams.seed)
 
-        # Calculate per-device batch size for DDP
+        # Calculate and set gradient accumulation for effective batch size
         if self.trainer is not None:
-            if self.hparams.batch_size % self.trainer.world_size != 0:
+            world_size = self.trainer.world_size
+            per_device = self.hparams.per_device_batch_size
+            total = self.hparams.batch_size
+
+            # Validate that total batch size is achievable
+            if total % (per_device * world_size) != 0:
                 raise RuntimeError(
-                    f"Batch size ({self.hparams.batch_size}) is not divisible by "
-                    f"the number of devices ({self.trainer.world_size})."
+                    f"Total batch size ({total}) must be divisible by "
+                    f"(per_device_batch_size * world_size) = ({per_device} * {world_size} = {per_device * world_size})."
                 )
-            self.batch_size_per_device = self.hparams.batch_size // self.trainer.world_size
+
+            accumulate_grad_batches = total // (per_device * world_size)
+            self.trainer.accumulate_grad_batches = accumulate_grad_batches
+
+            # Log batch size configuration
+            log.info("Batch size configuration:")
+            log.info(f"  per_device_batch_size: {per_device}")
+            log.info(f"  world_size (num GPUs): {world_size}")
+            log.info(f"  accumulate_grad_batches: {accumulate_grad_batches}")
+            log.info(
+                f"  effective batch_size: {per_device * world_size * accumulate_grad_batches}"
+            )
 
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(self.hparams.tokenizer_name)  # nosec B615

@@ -52,3 +52,9 @@ seed: 42
 # This will automatically compile the *_step() methods as well
 # overwrite from command line with `python train.py compile=false`
 compile: True
+
+# float32 matmul precision for Tensor Core optimization on CUDA devices
+# 'medium' or 'high' trades off precision for performance
+# set to null to disable (use default PyTorch behavior)
+# overwrite from command line with `python train.py float32_matmul_precision=high`
+float32_matmul_precision: medium
