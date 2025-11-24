@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from biofoundation.model.scoring import compute_llr_mlm
 from lightning import LightningModule
+from lightning.pytorch.utilities import grad_norm
 from sklearn.metrics import average_precision_score
 from torchmetrics.aggregation import CatMetric
 
@@ -134,3 +135,8 @@ class BERTLitModule(LightningModule):
                 "interval": "step",
             },
         }
+
+    def on_before_optimizer_step(self, optimizer: torch.optim.Optimizer) -> None:
+        """Log gradient norm before optimizer step."""
+        norms = grad_norm(self, norm_type=2)
+        self.log("train/grad_norm", norms["grad_2.0_norm_total"])

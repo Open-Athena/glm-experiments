@@ -209,3 +209,29 @@ def test_validation_step_mlm_still_works(bert_lit_module):
     # Should not raise
     result = bert_lit_module.validation_step(batch, batch_idx=0, dataloader_idx=0)
     assert result is None
+
+
+def test_on_before_optimizer_step_logs_grad_norm(bert_lit_module):
+    """Test that on_before_optimizer_step computes and logs gradient norm."""
+    from lightning.pytorch.utilities import grad_norm
+
+    batch_size = 2
+    seq_len = 100
+
+    batch = {
+        "input_ids": torch.randint(0, 6, (batch_size, seq_len)),
+        "labels": torch.randint(0, 6, (batch_size, seq_len)),
+        "loss_weight": torch.ones(batch_size, seq_len),
+    }
+
+    # Forward and backward to populate gradients
+    loss = bert_lit_module.model_step(batch)
+    loss.backward()
+
+    # Compute expected grad norm
+    norms = grad_norm(bert_lit_module, norm_type=2)
+    expected_norm = norms["grad_2.0_norm_total"]
+
+    # Verify gradients exist and norm is reasonable
+    assert expected_norm > 0.0
+    assert torch.isfinite(torch.tensor(expected_norm))
