@@ -102,6 +102,7 @@ class BERTLitModule(LightningModule):
                 on_epoch=True,
                 prog_bar=True,
                 add_dataloader_idx=False,
+                sync_dist=True,
             )
         elif dataloader_idx == 1:
             # TraitGym Mendelian Promoter VEP evaluation
