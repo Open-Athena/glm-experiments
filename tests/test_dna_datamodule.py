@@ -288,7 +288,7 @@ def test_batch_size_not_divisible_raises_error():
     dm = DNADataModule(batch_size=2047)  # Not divisible by 8
     dm.trainer = MockTrainer(world_size=8)
 
-    with pytest.raises(RuntimeError, match="not divisible"):
+    with pytest.raises(RuntimeError, match="must be divisible"):
         dm.setup(stage="fit")
 
 
@@ -332,3 +332,103 @@ def test_validation_no_soft_masking(dna_datamodule):
 
     # Min weight should be 0.0 for eval (soft-masked positions)
     assert min_weight == 0.0 or min_weight == 1.0
+
+
+def test_val_check_interval_adjustment_with_accumulation():
+    """Test that val_check_interval is multiplied by accumulate_grad_batches when > 1."""
+
+    class MockTrainer:
+        def __init__(self, world_size, val_check_interval):
+            self.world_size = world_size
+            self.global_rank = 0
+            self.val_check_interval = val_check_interval
+            self.accumulate_grad_batches = 1
+
+    # Create datamodule with batch size that requires accumulation
+    dm = DNADataModule(batch_size=256, per_device_batch_size=64)
+    trainer = MockTrainer(world_size=1, val_check_interval=10)
+    dm.trainer = trainer
+
+    # Setup should calculate accumulate_grad_batches and adjust val_check_interval
+    dm.setup(stage="fit")
+
+    # Should have accumulate_grad_batches = 256 / (64 * 1) = 4
+    assert trainer.accumulate_grad_batches == 4
+
+    # val_check_interval should be multiplied: 10 * 4 = 40
+    assert trainer.val_check_interval == 40
+
+
+def test_val_check_interval_no_adjustment_without_accumulation():
+    """Test that val_check_interval is unchanged when accumulate_grad_batches == 1."""
+
+    class MockTrainer:
+        def __init__(self, world_size, val_check_interval):
+            self.world_size = world_size
+            self.global_rank = 0
+            self.val_check_interval = val_check_interval
+            self.accumulate_grad_batches = 1
+
+    # Create datamodule where no accumulation is needed
+    dm = DNADataModule(batch_size=64, per_device_batch_size=64)
+    trainer = MockTrainer(world_size=1, val_check_interval=10)
+    dm.trainer = trainer
+
+    # Setup should calculate accumulate_grad_batches = 1 (no adjustment needed)
+    dm.setup(stage="fit")
+
+    # Should have accumulate_grad_batches = 64 / (64 * 1) = 1
+    assert trainer.accumulate_grad_batches == 1
+
+    # val_check_interval should be unchanged since accumulate_grad_batches == 1
+    assert trainer.val_check_interval == 10
+
+
+def test_val_check_interval_with_none():
+    """Test that None val_check_interval doesn't cause errors."""
+
+    class MockTrainer:
+        def __init__(self, world_size):
+            self.world_size = world_size
+            self.global_rank = 0
+            self.val_check_interval = None
+            self.accumulate_grad_batches = 1
+
+    # Create datamodule with accumulation
+    dm = DNADataModule(batch_size=256, per_device_batch_size=64)
+    trainer = MockTrainer(world_size=1)
+    dm.trainer = trainer
+
+    # Setup should not fail with None val_check_interval
+    dm.setup(stage="fit")
+
+    # Should have accumulate_grad_batches = 4
+    assert trainer.accumulate_grad_batches == 4
+
+    # val_check_interval should remain None
+    assert trainer.val_check_interval is None
+
+
+def test_val_check_interval_with_multi_gpu():
+    """Test val_check_interval adjustment with multiple GPUs."""
+
+    class MockTrainer:
+        def __init__(self, world_size, val_check_interval):
+            self.world_size = world_size
+            self.global_rank = 0
+            self.val_check_interval = val_check_interval
+            self.accumulate_grad_batches = 1
+
+    # batch_size=256, per_device=32, world_size=2
+    # accumulate_grad_batches = 256 / (32 * 2) = 4
+    dm = DNADataModule(batch_size=256, per_device_batch_size=32)
+    trainer = MockTrainer(world_size=2, val_check_interval=100)
+    dm.trainer = trainer
+
+    dm.setup(stage="fit")
+
+    # Should have accumulate_grad_batches = 4
+    assert trainer.accumulate_grad_batches == 4
+
+    # val_check_interval should be multiplied: 100 * 4 = 400
+    assert trainer.val_check_interval == 400

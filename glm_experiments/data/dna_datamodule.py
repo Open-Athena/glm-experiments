@@ -179,6 +179,13 @@ class DNADataModule(LightningDataModule):
             accumulate_grad_batches = total // (per_device * world_size)
             self.trainer.accumulate_grad_batches = accumulate_grad_batches
 
+            # Adjust val_check_interval when using gradient accumulation
+            # See: https://github.com/Lightning-AI/pytorch-lightning/issues/17207
+            if accumulate_grad_batches > 1 and self.trainer.val_check_interval is not None:
+                original_interval = self.trainer.val_check_interval
+                adjusted_interval = original_interval * accumulate_grad_batches
+                self.trainer.val_check_interval = adjusted_interval
+
             # Log batch size configuration
             log.info("Batch size configuration:")
             log.info(f"  per_device_batch_size: {per_device}")
@@ -187,6 +194,13 @@ class DNADataModule(LightningDataModule):
             log.info(
                 f"  effective batch_size: {per_device * world_size * accumulate_grad_batches}"
             )
+
+            # Log val_check_interval adjustment
+            if accumulate_grad_batches > 1 and self.trainer.val_check_interval is not None:
+                log.info(
+                    f"  val_check_interval adjusted: {original_interval} → "
+                    f"{adjusted_interval} (multiplied by accumulate_grad_batches)"
+                )
 
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(self.hparams.tokenizer_name)  # nosec B615
@@ -257,9 +271,10 @@ class DNADataModule(LightningDataModule):
                 ),
                 batched=True,
                 remove_columns=list(list(raw_datasets["train"].take(1))[0].keys()),
-                # drop_last_batch needed for torch.compile to avoid variable batch sizes
+                # drop_last_batch helpful for many issues, including
+                # https://github.com/Lightning-AI/pytorch-lightning/issues/17207
                 drop_last_batch=True,
-                batch_size=self.batch_size_per_device,
+                batch_size=self.hparams.batch_size,
             )
 
             # Validation dataset (no augmentation, no shuffling)
