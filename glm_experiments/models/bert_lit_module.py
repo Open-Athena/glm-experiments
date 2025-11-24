@@ -79,7 +79,7 @@ class BERTLitModule(LightningModule):
     def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
         """Training step."""
         loss = self.model_step(batch)
-        self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train/loss", loss, on_step=True, on_epoch=False, prog_bar=True)
         return loss
 
     def validation_step(
@@ -95,7 +95,14 @@ class BERTLitModule(LightningModule):
         if dataloader_idx == 0:
             # MLM validation
             loss = self.model_step(batch)
-            self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+            self.log(
+                "val/loss",
+                loss,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                add_dataloader_idx=False,
+            )
         elif dataloader_idx == 1:
             # TraitGym Mendelian Promoter VEP evaluation
             # Data comes as PyTorch tensors from HuggingFace dataset with set_format("torch")

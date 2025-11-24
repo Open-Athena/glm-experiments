@@ -1,6 +1,6 @@
 defaults:
   - model_summary
-  - tqdm_progress_bar
+  - step_progress_bar
   - lr_monitor
   - _self_
 
