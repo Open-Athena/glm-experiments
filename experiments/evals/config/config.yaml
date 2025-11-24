@@ -13,11 +13,13 @@ sat_mut_mpra_promoter:
 
 context_size: 512
 per_device_batch_size: 128
-torch_compile: False
+torch_compile: False # overhead not worth it for small datasets and fast models
 
 # first part run for 370k steps, second part run for 130k steps
 models:
   "10000": results/model/checkpoints_first_part/checkpoint-10000
+  "20000": results/model/checkpoints_first_part/checkpoint-20000
+  "50000": results/model/checkpoints_first_part/checkpoint-50000
   "100000": results/model/checkpoints_first_part/checkpoint-100000
   "200000": results/model/checkpoints_first_part/checkpoint-200000
   "300000": results/model/checkpoints_first_part/checkpoint-300000
@@ -30,13 +32,13 @@ scorings:
 
 datasets:
   - traitgym_mendelian_promoter
-#   - traitgym_complex_promoter
-#   - sat_mut_mpra_promoter_F9
-#   - sat_mut_mpra_promoter_GP1BA
-#   - sat_mut_mpra_promoter_HBB
-#   - sat_mut_mpra_promoter_HBG1
-#   - sat_mut_mpra_promoter_HNF4A
-#   - sat_mut_mpra_promoter_LDLR
-#   - sat_mut_mpra_promoter_MSMB
-#   - sat_mut_mpra_promoter_PKLR
-#   - sat_mut_mpra_promoter_TERT
+  - traitgym_complex_promoter
+  - sat_mut_mpra_promoter_F9
+  - sat_mut_mpra_promoter_GP1BA
+  - sat_mut_mpra_promoter_HBB
+  - sat_mut_mpra_promoter_HBG1
+  - sat_mut_mpra_promoter_HNF4A
+  - sat_mut_mpra_promoter_LDLR
+  - sat_mut_mpra_promoter_MSMB
+  - sat_mut_mpra_promoter_PKLR
+  - sat_mut_mpra_promoter_TERT

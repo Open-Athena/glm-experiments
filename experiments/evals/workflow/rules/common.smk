@@ -7,6 +7,7 @@ import gpn.model  # noqa: F401  # Registers the GPN architecture
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
+from sklearn.metrics import average_precision_score
 from transformers import AutoTokenizer, AutoModelForMaskedLM
 
 

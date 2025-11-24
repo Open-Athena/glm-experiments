@@ -2,16 +2,26 @@ configfile: "config/config.yaml"
 
 
 include: "rules/common.smk"
-
-include: "rules/traitgym.smk"
+include: "rules/metrics.smk"
 include: "rules/model.smk"
+include: "rules/sat_mut_mpra.smk"
+include: "rules/traitgym.smk"
 
 
 rule all:
     input:
         expand(
-            "results/prediction/{dataset}/{model}.{scoring}.parquet",
-            dataset=config["datasets"],
+            "results/metrics/traitgym_mendelian_promoter/AUPRC/{model}_{scoring}.tsv",
             model=config["models"].keys(),
-            scoring=config["scorings"],
-        )
+            scoring=[
+                "LLR.minus.score",
+            ]
+        ),
+        expand(
+            "results/metrics/sat_mut_mpra_promoter_{promoter}/Spearman/{model}_{scoring}.tsv",
+            promoter=config["sat_mut_mpra_promoter"],
+            model=config["models"].keys(),
+            scoring=[
+                "absLLR.plus.score",
+            ]
+        ),

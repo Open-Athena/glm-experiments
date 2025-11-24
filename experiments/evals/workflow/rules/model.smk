@@ -20,13 +20,16 @@ rule model_llr:
         "results/model/checkpoints_second_part",
     output:
         "results/features/{dataset}/{model}_LLR.parquet",
+    wildcard_constraints:
+        dataset="|".join(config["datasets"]),
+        model="|".join(config["models"].keys()),
     threads:
         workflow.cores
     run:
-        V = pd.read_parquet(input[0])
-        dataset = Dataset.from_pandas(V[COORDINATES], preserve_index=False)
+        V = pd.read_parquet(input[0], columns=COORDINATES)
+        dataset = Dataset.from_pandas(V, preserve_index=False)
         genome = Genome(input[1])
-        model_name = config["models"][model]
+        model_name = config["models"][wildcards.model]
         tokenizer = HFTokenizer(AutoTokenizer.from_pretrained(model_name))
         model = GPNMaskedLM(AutoModelForMaskedLM.from_pretrained(model_name))
         llr = run_llr_mlm(
@@ -53,6 +56,9 @@ rule model_abs_llr:
         "results/features/{dataset}/{model}_LLR.parquet",
     output:
         "results/features/{dataset}/{model}_absLLR.parquet",
+    wildcard_constraints:
+        dataset="|".join(config["datasets"]),
+        model="|".join(config["models"].keys()),
     run:
         df = pd.read_parquet(input[0])
         df = df.abs()
@@ -61,7 +67,7 @@ rule model_abs_llr:
 
 rule model_prediction:
     input:
-        "results/features/{dataset}/{model}_absLLR.parquet",
+        "results/features/{dataset}/{model}.parquet",
     output:
         "results/prediction/{dataset}/{model}.{sign,plus|minus}.{feature}.parquet",
     run:
