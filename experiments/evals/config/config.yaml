@@ -1,0 +1,42 @@
+genome_url: https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz
+
+sat_mut_mpra_promoter:
+  - F9
+  - GP1BA
+  - HBB
+  - HBG1
+  - HNF4A
+  - LDLR
+  - MSMB
+  - PKLR
+  - TERT
+
+context_size: 512
+per_device_batch_size: 128
+torch_compile: False
+
+# first part run for 370k steps, second part run for 130k steps
+models:
+  "10000": results/model/checkpoints_first_part/checkpoint-10000
+  "100000": results/model/checkpoints_first_part/checkpoint-100000
+  "200000": results/model/checkpoints_first_part/checkpoint-200000
+  "300000": results/model/checkpoints_first_part/checkpoint-300000
+  "400000": results/model/checkpoints_second_part/checkpoint-30000
+  "500000": results/model/checkpoints_second_part/checkpoint-130000
+
+scorings:
+  - LLR.minus.score
+  - absLLR.plus.score
+
+datasets:
+  - traitgym_mendelian_promoter
+#   - traitgym_complex_promoter
+#   - sat_mut_mpra_promoter_F9
+#   - sat_mut_mpra_promoter_GP1BA
+#   - sat_mut_mpra_promoter_HBB
+#   - sat_mut_mpra_promoter_HBG1
+#   - sat_mut_mpra_promoter_HNF4A
+#   - sat_mut_mpra_promoter_LDLR
+#   - sat_mut_mpra_promoter_MSMB
+#   - sat_mut_mpra_promoter_PKLR
+#   - sat_mut_mpra_promoter_TERT

@@ -1,0 +1,17 @@
+configfile: "config/config.yaml"
+
+
+include: "rules/common.smk"
+
+include: "rules/traitgym.smk"
+include: "rules/model.smk"
+
+
+rule all:
+    input:
+        expand(
+            "results/prediction/{dataset}/{model}.{scoring}.parquet",
+            dataset=config["datasets"],
+            model=config["models"].keys(),
+            scoring=config["scorings"],
+        )
