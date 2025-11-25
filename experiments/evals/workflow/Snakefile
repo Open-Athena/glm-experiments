@@ -18,6 +18,13 @@ rule all:
             ]
         ),
         expand(
+            "results/metrics/traitgym_complex_promoter/AUPRC/{model}_{scoring}.tsv",
+            model=config["models"].keys(),
+            scoring=[
+                "absLLR.plus.score",
+            ]
+        ),
+        expand(
             "results/metrics/sat_mut_mpra_promoter_{promoter}/Spearman/{model}_{scoring}.tsv",
             promoter=config["sat_mut_mpra_promoter"],
             model=config["models"].keys(),

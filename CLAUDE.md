@@ -7,6 +7,7 @@ This document provides comprehensive coding standards, development practices, te
 ## Table of Contents
 
 - [Project Roadmap](#project-roadmap)
+- [Experiments Directory](#experiments-directory)
 - [Core Principles](#core-principles)
 - [Code Quality Standards](#code-quality-standards)
 - [Technology Stack](#technology-stack)
@@ -52,6 +53,134 @@ Code: https://github.com/songlab-cal/gpn/tree/main/analysis/gpn_animal_promoter
 Model: https://huggingface.co/songlab/gpn-animal-promoter
 Training dataset: https://huggingface.co/datasets/songlab/gpn-animal-promoter-dataset
 Eval dataset: https://huggingface.co/datasets/songlab/TraitGym (subset to promoter variants)
+
+---
+
+## Experiments Directory
+
+The `experiments/` directory is for exploratory analysis with less stringent code standards than the main package. Each experiment has its own isolated environment.
+
+### Directory Structure
+
+```
+experiments/
+├── evals/                       # Model evaluation experiments
+│   ├── .venv/                  # Isolated Python environment (Python 3.13)
+│   ├── workflow/               # Snakemake workflow
+│   │   ├── Snakefile          # Main workflow definition
+│   │   └── rules/             # Modular workflow rules
+│   │       ├── common.smk     # Shared imports and genome download
+│   │       ├── model.smk      # Model loading and LLR computation
+│   │       ├── traitgym.smk   # TraitGym dataset processing
+│   │       ├── sat_mut_mpra.smk  # Saturation mutagenesis MPRA data
+│   │       ├── metrics.smk    # AUPRC and Spearman metrics
+│   │       └── gnomad.smk     # gnomAD dataset (placeholder)
+│   ├── config/                # Configuration files
+│   │   └── config.yaml        # Dataset, model, and scoring config
+│   ├── results/               # Generated outputs (gitignored)
+│   │   ├── genome.fa.gz       # Reference genome
+│   │   ├── model/             # Downloaded model checkpoints
+│   │   ├── dataset/           # Processed datasets (parquet)
+│   │   ├── features/          # LLR and absLLR scores
+│   │   ├── prediction/        # Signed predictions
+│   │   └── metrics/           # Final evaluation metrics (TSV)
+│   ├── requirements.txt       # Python dependencies
+│   └── README.md              # Setup and usage instructions
+```
+
+### experiments/evals: Model Evaluation Pipeline
+
+**Purpose**: Evaluate genomic language models (specifically GPN-Animal-Promoter checkpoints) on variant effect prediction tasks using Snakemake workflows.
+
+**Key Technologies**:
+- **Snakemake**: Workflow management for reproducible analysis
+- **biofoundation**: Library for genomic data and model inference (GPN adapter)
+- **PyTorch**: Model loading and inference (bf16, torch compile configurable)
+- **HuggingFace**: Model and dataset loading
+- **Pandas**: Data processing with parquet files
+
+### Workflow Overview
+
+The evaluation pipeline consists of these stages:
+
+1. **Genome Download** (`common.smk`):
+   - Downloads human reference genome (GRCh38) from Ensembl
+
+2. **Dataset Preparation** (`traitgym.smk`, `sat_mut_mpra.smk`):
+   - **TraitGym Mendelian**: Mendelian trait variants (promoter region, non-exonic)
+   - **TraitGym Complex**: Complex trait variants (promoter region, non-exonic)
+   - **Saturation Mutagenesis MPRA**: 9 promoters (F9, GP1BA, HBB, HBG1, HNF4A, LDLR, MSMB, PKLR, TERT)
+
+3. **Model Inference** (`model.smk`):
+   - Downloads GPN-Animal-Promoter checkpoints (8 timepoints: 10k-500k steps)
+   - Computes **Log Likelihood Ratios (LLR)** using masked language modeling
+   - Computes **absolute LLR (absLLR)** for variant effect magnitude
+   - Parallelized inference using `dataloader_num_workers=workflow.cores`
+
+4. **Prediction Generation** (`model.smk`):
+   - Converts features to signed predictions:
+     - `LLR.minus.score`: -LLR (for pathogenicity)
+     - `absLLR.plus.score`: absLLR (for effect magnitude)
+
+5. **Metrics Calculation** (`metrics.smk`):
+   - **AUPRC (Average Precision)**: For binary classification tasks (TraitGym)
+   - **Spearman correlation**: For regression tasks (saturation mutagenesis)
+
+### Configuration
+
+**Key parameters in `config/config.yaml`**:
+- `context_size: 512` - Sequence context window for model inference
+- `per_device_batch_size: 128` - Batch size for inference
+- `torch_compile: False` - Torch compilation (overhead not worth it for small datasets)
+- `models`: Dictionary mapping checkpoint names to paths
+- `sat_mut_mpra_promoter`: List of promoters to evaluate
+
+### Running the Pipeline
+
+```bash
+# Navigate to experiment directory
+cd experiments/evals
+
+# Activate isolated environment
+source .venv/bin/activate
+
+# Dry run to see planned jobs
+snakemake --cores all --dry-run
+
+# Execute workflow
+snakemake --cores all
+
+# Execute specific target
+snakemake --cores all results/metrics/traitgym_mendelian_promoter/AUPRC/10000_LLR.minus.score.tsv
+```
+
+### Results Structure
+
+Final metrics are organized by:
+- **Dataset**: `traitgym_mendelian_promoter`, `traitgym_complex_promoter`, `sat_mut_mpra_promoter_{PROMOTER}`
+- **Metric**: `AUPRC`, `Spearman`
+- **Model + Scoring**: `{checkpoint}_{scoring}.tsv` (e.g., `10000_LLR.minus.score.tsv`)
+
+Example output:
+```
+results/metrics/traitgym_mendelian_promoter/AUPRC/10000_LLR.minus.score.tsv
+```
+
+### Development Guidelines
+
+**For experiments directory**:
+- ✅ Use separate `uv` environments per experiment (`.venv` in each subdir)
+- ✅ Less stringent code standards than main package
+- ✅ Focus on exploratory analysis and rapid iteration
+- ✅ Use Snakemake for reproducible workflows
+- ✅ Parquet format for intermediate data (efficient columnar storage)
+- ❌ No need for pre-commit hooks, Black formatting, or comprehensive tests
+- ❌ Don't integrate with main package testing/CI
+- ⚠️ Keep experiments isolated and self-contained
+
+**Key differences from main package**:
+- Main package (`glm_experiments/`): Production training code, PyTorch Lightning, Hydra, strict standards
+- Experiments (`experiments/`): Ad-hoc analysis, Snakemake workflows, exploratory
 
 ---
 
@@ -978,3 +1107,4 @@ pyproject.toml                  # Dependencies
 - **`tests/conftest.py`** - Test fixtures
 - remove the statement about not testing. let's do test things that are easy and not require e.g. gpu training.
 - You should follow my instructions in @CLAUDE.md (draft an issue in markdown, let me approve, then you create the issue).
+- the experiments directory is for more exploratory analysis (less stringent code standards), managed with separate uv environments.
