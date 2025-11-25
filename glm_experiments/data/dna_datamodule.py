@@ -108,6 +108,7 @@ class DNADataModule(LightningDataModule):
         soft_masked_loss_weight_train: Loss weight for soft-masked regions during training
         soft_masked_loss_weight_eval: Loss weight for soft-masked regions during evaluation
         data_augmentation: Whether to apply reverse complement augmentation (training only)
+        max_val_mlm_samples: Maximum number of samples for MLM validation (None = unlimited)
         seed: Random seed for reproducibility
     """
 
@@ -123,6 +124,7 @@ class DNADataModule(LightningDataModule):
         soft_masked_loss_weight_train: float = 0.01,
         soft_masked_loss_weight_eval: float = 0.0,
         data_augmentation: bool = True,
+        max_val_mlm_samples: int | None = None,
         seed: int = 42,
         evals: dict[str, Any] | None = None,
     ):
@@ -278,7 +280,13 @@ class DNADataModule(LightningDataModule):
             )
 
             # Validation dataset (no augmentation, no shuffling)
-            val_dataset = raw_datasets["validation"].map(
+            val_dataset = raw_datasets["validation"]
+
+            # Limit samples if max_val_mlm_samples is set
+            if self.hparams.max_val_mlm_samples is not None:
+                val_dataset = val_dataset.take(self.hparams.max_val_mlm_samples)
+
+            val_dataset = val_dataset.map(
                 lambda ex: transform_batch(
                     ex,
                     soft_masked_weight=self.hparams.soft_masked_loss_weight_eval,

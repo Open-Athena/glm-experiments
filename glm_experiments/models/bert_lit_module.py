@@ -10,6 +10,10 @@ from lightning.pytorch.utilities import grad_norm
 from sklearn.metrics import average_precision_score
 from torchmetrics.aggregation import CatMetric
 
+from glm_experiments.utils import pylogger
+
+log = pylogger.RankedLogger(__name__, rank_zero_only=True)
+
 
 class MaskedLMAdapter(nn.Module):
     """Adapter to make BERT compatible with biofoundation's MaskedLM protocol.
@@ -125,6 +129,8 @@ class BERTLitModule(LightningModule):
             labels = self.traitgym_mendelian_promoter_labels.compute().cpu().numpy()
 
             auprc = average_precision_score(labels, scores)
+            sample_size = len(labels)
+            log.info(f"TraitGym Mendelian Promoter: sample_size={sample_size}, AUPRC={auprc:.4f}")
             self.log("val/traitgym_mendelian_promoter_auprc", auprc, prog_bar=True)
 
             # Reset metrics for next epoch

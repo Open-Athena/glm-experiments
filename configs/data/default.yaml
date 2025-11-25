@@ -20,6 +20,9 @@ soft_masked_loss_weight_eval: 0.0 # No weight for soft-masked regions during eva
 # Data augmentation
 data_augmentation: true # Reverse complement augmentation (training only)
 
+# Validation dataset size (MLM only, not TraitGym)
+max_val_mlm_samples: null # Maximum number of samples for MLM validation (null = unlimited)
+
 # Reproducibility
 seed: 42
 
