@@ -36,12 +36,12 @@ class Linear(nn.Module):
 
         super().__init__()
         std = math.sqrt(2 / (d_in + d_out))
-        self.weight: Float[Tensor,  d_out d_in] = nn.Parameter(
+        self.weight: Float[Tensor, " d_out d_in"] = nn.Parameter(
             nn.init.trunc_normal_(torch.empty(d_out, d_in), std=std, a=-3 * std, b=3 * std),
             requires_grad=True,
         )
 
-    def forward(self, x: Float[Tensor,  ... d_in]) -> Float[Tensor,  ... d_out]:
+    def forward(self, x: Float[Tensor, " ... d_in"]) -> Float[Tensor, " ... d_out"]:
         return einsum(x, self.weight, "... d_in, d_out d_in -> ... d_out")
 
     def extra_repr(self):
@@ -59,7 +59,7 @@ class Embedding(nn.Module):
             requires_grad=True,
         )
 
-    def forward(self, token_ids: Int[Tensor,  ...]) -> Float[Tensor,  ... d_model]:
+    def forward(self, token_ids: Int[Tensor, " ..."]) -> Float[Tensor, " ... d_model"]:
         return self.weight[token_ids, :]
 
     def extra_repr(self):
@@ -78,7 +78,7 @@ class RotaryEmbedding(nn.Module):
     @staticmethod
     def _init_cache(
         context_length: int, dim: int, theta: float
-    ) -> Float[Tensor,  2 context_length half_dim]:
+    ) -> Float[Tensor, " 2 context_length half_dim"]:
         assert dim % 2 == 0
 
         d = torch.arange(0, dim, 2) / dim
@@ -91,8 +91,8 @@ class RotaryEmbedding(nn.Module):
         return torch.stack((cos, sin))
 
     def forward(
-        self, x: Float[Tensor,  ... seq d], pos_ids: Int[Tensor,  ... seq]
-    ) -> Float[Tensor,  ... seq d]:
+        self, x: Float[Tensor, " ... seq d"], pos_ids: Int[Tensor, " ... seq"]
+    ) -> Float[Tensor, " ... seq d"]:
         x1, x2 = rearrange(x, "... (half_d xy) -> xy ... half_d", xy=2)
 
         # einx
@@ -172,9 +172,9 @@ class MultiHeadSelfAttention(nn.Module):
 
     def forward(
         self,
-        x: Float[Tensor,  ... seq d_k],
-        token_positions: Int[Tensor,  ... seq] | None = None,
-    ) -> Float[Tensor,  ... seq d_v]:
+        x: Float[Tensor, " ... seq d_k"],
+        token_positions: Int[Tensor, " ... seq"] | None = None,
+    ) -> Float[Tensor, " ... seq d_v"]:
         """
         Args:
             x: The input to perform multi-headed self-attention on.
