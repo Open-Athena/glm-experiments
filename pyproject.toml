@@ -38,6 +38,9 @@ dependencies = [
     "biopython>=1.81",
     "zstandard>=0.18.0",
     "wandb>=0.23.0",
+    "einops>=0.7.0",
+    "einx>=0.3.0",
+    "jaxtyping>=0.2.0",
     "biofoundation @ git+https://github.com/Open-Athena/biofoundation.git@d3865288bbb4b5ab814df85599381f206e375fe6",
 ]
 
