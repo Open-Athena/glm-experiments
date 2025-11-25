@@ -33,6 +33,7 @@ scorings:
 datasets:
   - traitgym_mendelian_promoter
   - traitgym_complex_promoter
+  - gnomad_promoter
   - sat_mut_mpra_promoter_F9
   - sat_mut_mpra_promoter_GP1BA
   - sat_mut_mpra_promoter_HBB

@@ -2,6 +2,7 @@ configfile: "config/config.yaml"
 
 
 include: "rules/common.smk"
+include: "rules/gnomad.smk"
 include: "rules/metrics.smk"
 include: "rules/model.smk"
 include: "rules/sat_mut_mpra.smk"
@@ -30,5 +31,13 @@ rule all:
             model=config["models"].keys(),
             scoring=[
                 "absLLR.plus.score",
+            ]
+        ),
+        expand(
+            "results/metrics/gnomad_promoter/{metric}/{model}_{scoring}.tsv",
+            metric=["AUPRC", "AUROC"],
+            model=config["models"].keys(),
+            scoring=[
+                "LLR.minus.score",
             ]
         ),
