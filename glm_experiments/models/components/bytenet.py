@@ -120,6 +120,9 @@ class ByteNet(nn.Module):
     ):
         super().__init__()
 
+        # ByteNet uses bidirectional context (not causal)
+        self.is_causal = False
+
         # Dilation schedule: [1, 2, 4, 8, 16, 32, 64, 128, 1, 2, ...]
         dilations = [dilation_base ** (i % dilation_cycle) for i in range(n_layers)]
 

@@ -1,4 +1,4 @@
-_target_: glm_experiments.data.dna_datamodule.DNADataModule
+_target_: glm_experiments.data.dna_datamodule.MLMDataModule
 
 # Dataset and tokenizer (override in specific configs)
 dataset_name: data/gpn-animal-promoter-dataset
@@ -10,9 +10,6 @@ per_device_batch_size: 32 # Batch size per device (what fits in GPU memory)
 num_workers: 4
 pin_memory: true
 
-# MLM parameters
-mlm_probability: 0.15 # Standard BERT masking (15% of tokens)
-
 # Soft masking for genomic soft-masked regions (lowercase nucleotides)
 soft_masked_loss_weight_train: 0.01 # Low weight for soft-masked regions during training
 soft_masked_loss_weight_eval: 0.0 # No weight for soft-masked regions during eval
@@ -20,8 +17,8 @@ soft_masked_loss_weight_eval: 0.0 # No weight for soft-masked regions during eva
 # Data augmentation
 data_augmentation: true # Reverse complement augmentation (training only)
 
-# Validation dataset size (MLM only, not TraitGym)
-max_val_mlm_samples: null # Maximum number of samples for MLM validation (null = unlimited)
+# Validation dataset size (LM only, not TraitGym)
+max_val_lm_samples: null # Maximum number of samples for LM validation (null = unlimited)
 
 # Reproducibility
 seed: 42

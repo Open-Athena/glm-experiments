@@ -1,7 +1,7 @@
-_target_: glm_experiments.models.bert_lit_module.BERTLitModule
+_target_: glm_experiments.models.lm_lit_module.MLMLitModule
 
 net:
-  _target_: glm_experiments.models.components.bert.BERT
+  _target_: glm_experiments.models.components.lm.MLM
   embedder:
     _target_: torch.nn.Embedding
     num_embeddings: 7

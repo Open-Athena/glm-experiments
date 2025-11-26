@@ -1,21 +1,21 @@
-_target_: glm_experiments.models.lm_lit_module.MLMLitModule
+_target_: glm_experiments.models.lm_lit_module.CLMLitModule
 
 net:
-  _target_: glm_experiments.models.components.lm.MLM
+  _target_: glm_experiments.models.components.lm.CLM
   embedder:
     _target_: glm_experiments.models.components.transformer.Embedding
     vocab_size: 7
-    d_model: 128
+    d_model: 768 # Standard BERT-base size
   encoder:
     _target_: glm_experiments.models.components.transformer.Transformer
-    hidden_size: ${..embedder.d_model} # 128
-    n_layers: 6 # Fewer layers for fast iteration
-    num_heads: 8 # 8 heads → d_head = 16
-    # d_ff: auto-computed as floor(128 * 8/3 / 64) * 64 = 320
+    hidden_size: ${..embedder.d_model} # 768
+    n_layers: 12 # CS336 default
+    num_heads: 12 # 12 heads → d_head = 64
+    # d_ff: auto-computed as floor(768 * 8/3 / 64) * 64 = 2048
     rope_theta: 10000.0
-    is_causal: false # Bidirectional for MLM
+    is_causal: true # Causal for CLM
   layer_norm:
-    _target_: torch.nn.RMSNorm # Use RMSNorm to match Transformer
+    _target_: torch.nn.RMSNorm
     normalized_shape: ${..embedder.d_model}
   decoder:
     _target_: glm_experiments.models.components.transformer.Linear
@@ -33,4 +33,4 @@ optimizer:
 scheduler:
   _target_: transformers.get_constant_schedule_with_warmup
   _partial_: true
-  num_warmup_steps: 100
+  num_warmup_steps: 1000 # More warmup for larger model

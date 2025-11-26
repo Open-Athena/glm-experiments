@@ -11,7 +11,7 @@ from functools import partial
 from pathlib import Path
 
 import pandas as pd
-from biofoundation.data import Genome, transform_llr_mlm
+from biofoundation.data import Genome, transform_llr_clm, transform_llr_mlm
 from biofoundation.model.base import Tokenizer
 from datasets import Dataset, load_dataset
 
@@ -44,12 +44,13 @@ def load_traitgym_mendelian_promoter_dataset(
     dataset_config: str = "mendelian_traits",
     window_size: int = 512,
     cache_dir: str | Path = "data/traitgym_cache",
+    objective: str = "mlm",
 ) -> Dataset:
     """Load and transform TraitGym Mendelian Promoter dataset for variant effect prediction.
 
     Loads the TraitGym dataset from HuggingFace, filters to non-exonic proximal
-    promoter variants, and applies the transform_llr_mlm transformation to prepare
-    examples for masked language model evaluation.
+    promoter variants, and applies the appropriate transform (transform_llr_mlm or
+    transform_llr_clm) based on the objective.
 
     The Genome is only loaded if the transformed dataset is not cached.
 
@@ -60,14 +61,17 @@ def load_traitgym_mendelian_promoter_dataset(
         dataset_config: Dataset configuration (e.g., "mendelian_traits")
         window_size: Size of the window around variants (must be even)
         cache_dir: Directory to cache transformed dataset
+        objective: Training objective ("mlm" or "clm") - determines transform function
 
     Returns:
         Transformed dataset with columns: input_ids, pos, ref, alt, label
     """
     from datasets import load_from_disk
 
-    # Create cache path based on config (use mendelian_promoter suffix to distinguish)
-    cache_path = Path(cache_dir) / f"{dataset_config}_mendelian_promoter_window{window_size}"
+    # Create cache path based on config and objective (different transforms need separate caches)
+    cache_path = (
+        Path(cache_dir) / f"{dataset_config}_mendelian_promoter_window{window_size}_{objective}"
+    )
 
     # Check if cached transformed dataset exists
     if cache_path.exists():
@@ -98,8 +102,16 @@ def load_traitgym_mendelian_promoter_dataset(
     # We need to keep the label column for evaluation
     original_columns = dataset.column_names
 
+    # Select transform function based on objective
+    if objective == "mlm":
+        transform_func = transform_llr_mlm
+    elif objective == "clm":
+        transform_func = transform_llr_clm
+    else:
+        raise ValueError(f"Unknown objective: {objective}. Must be 'mlm' or 'clm'.")
+
     transform_fn = partial(
-        transform_llr_mlm,
+        transform_func,
         tokenizer=tokenizer,
         genome=genome,
         window_size=window_size,

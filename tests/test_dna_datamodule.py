@@ -7,7 +7,7 @@ from Bio.Seq import Seq
 from hydra import compose, initialize
 
 from glm_experiments.data.dna_datamodule import (
-    DNADataModule,
+    MLMDataModule,
     apply_mlm_masking,
     apply_reverse_complement,
 )
@@ -19,7 +19,7 @@ def dna_datamodule():
 
     Uses small batch size and no workers for fast testing.
     """
-    dm = DNADataModule(
+    dm = MLMDataModule(
         dataset_name="songlab/gpn-animal-promoter-dataset",
         tokenizer_name="gonzalobenegas/tokenizer-dna-mlm",
         batch_size=32,  # Small batch for testing
@@ -259,7 +259,7 @@ def test_batch_size_per_device_calculation():
             self.world_size = world_size
             self.global_rank = 0
 
-    dm = DNADataModule(batch_size=2048)
+    dm = MLMDataModule(batch_size=2048)
 
     # Test the batch size calculation logic directly without loading dataset
     # Test single device
@@ -285,7 +285,7 @@ def test_batch_size_not_divisible_raises_error():
         def __init__(self, world_size):
             self.world_size = world_size
 
-    dm = DNADataModule(batch_size=2047)  # Not divisible by 8
+    dm = MLMDataModule(batch_size=2047)  # Not divisible by 8
     dm.trainer = MockTrainer(world_size=8)
 
     with pytest.raises(RuntimeError, match="must be divisible"):
@@ -306,7 +306,7 @@ def test_hydra_instantiation():
         dm = hydra.utils.instantiate(cfg.data)
 
         # Check that it's the right type
-        assert isinstance(dm, DNADataModule)
+        assert isinstance(dm, MLMDataModule)
         assert dm.hparams.dataset_name == "data/gpn-animal-promoter-dataset"
         assert dm.hparams.tokenizer_name == "gonzalobenegas/tokenizer-dna-mlm"
         assert dm.hparams.batch_size == 2048
@@ -345,7 +345,7 @@ def test_val_check_interval_adjustment_with_accumulation():
             self.accumulate_grad_batches = 1
 
     # Create datamodule with batch size that requires accumulation
-    dm = DNADataModule(batch_size=256, per_device_batch_size=64)
+    dm = MLMDataModule(batch_size=256, per_device_batch_size=64)
     trainer = MockTrainer(world_size=1, val_check_interval=10)
     dm.trainer = trainer
 
@@ -370,7 +370,7 @@ def test_val_check_interval_no_adjustment_without_accumulation():
             self.accumulate_grad_batches = 1
 
     # Create datamodule where no accumulation is needed
-    dm = DNADataModule(batch_size=64, per_device_batch_size=64)
+    dm = MLMDataModule(batch_size=64, per_device_batch_size=64)
     trainer = MockTrainer(world_size=1, val_check_interval=10)
     dm.trainer = trainer
 
@@ -395,7 +395,7 @@ def test_val_check_interval_with_none():
             self.accumulate_grad_batches = 1
 
     # Create datamodule with accumulation
-    dm = DNADataModule(batch_size=256, per_device_batch_size=64)
+    dm = MLMDataModule(batch_size=256, per_device_batch_size=64)
     trainer = MockTrainer(world_size=1)
     dm.trainer = trainer
 
@@ -421,7 +421,7 @@ def test_val_check_interval_with_multi_gpu():
 
     # batch_size=256, per_device=32, world_size=2
     # accumulate_grad_batches = 256 / (32 * 2) = 4
-    dm = DNADataModule(batch_size=256, per_device_batch_size=32)
+    dm = MLMDataModule(batch_size=256, per_device_batch_size=32)
     trainer = MockTrainer(world_size=2, val_check_interval=100)
     dm.trainer = trainer
 

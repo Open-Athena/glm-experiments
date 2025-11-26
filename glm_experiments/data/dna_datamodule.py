@@ -89,11 +89,32 @@ def apply_mlm_masking(
     return input_ids, labels
 
 
-class DNADataModule(LightningDataModule):
-    """Generic DataModule for DNA masked language modeling.
+def apply_clm_labels(input_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Prepare CLM labels for next-token prediction.
+
+    Unlike MLM, CLM doesn't need -100 padding or masking. The model will slice
+    logits[:, :-1] and labels[:, 1:] to align predictions with targets.
+
+    Args:
+        input_ids: Token IDs of shape (batch_size, seq_len)
+
+    Returns:
+        Tuple of (input_ids, labels) both as int8.
+        Labels are same as input_ids (slicing happens in model).
+    """
+    input_ids = input_ids.clone().to(torch.int8)
+    labels = input_ids.clone()  # No shifting - model handles slicing
+
+    return input_ids, labels
+
+
+class LMDataModule(LightningDataModule):
+    """Base DataModule for DNA language modeling.
 
     Loads any HuggingFace DNA dataset (streaming) and applies tokenization with
     optional reverse complement augmentation and soft masking.
+
+    Subclasses override apply_labels() to implement MLM vs CLM label creation.
 
     Based on GPN's implementation in gpn/ss/run_mlm.py.
 
@@ -104,11 +125,10 @@ class DNADataModule(LightningDataModule):
         per_device_batch_size: Batch size per device (what fits in GPU memory)
         num_workers: Number of workers for data loading
         pin_memory: Whether to pin memory for faster GPU transfer
-        mlm_probability: Probability of masking tokens (default: 0.15)
         soft_masked_loss_weight_train: Loss weight for soft-masked regions during training
         soft_masked_loss_weight_eval: Loss weight for soft-masked regions during evaluation
         data_augmentation: Whether to apply reverse complement augmentation (training only)
-        max_val_mlm_samples: Maximum number of samples for MLM validation (None = unlimited)
+        max_val_lm_samples: Maximum number of samples for LM validation (None = unlimited)
         seed: Random seed for reproducibility
     """
 
@@ -120,11 +140,10 @@ class DNADataModule(LightningDataModule):
         per_device_batch_size: int = 256,  # Batch size that fits in GPU memory
         num_workers: int = 8,
         pin_memory: bool = True,
-        mlm_probability: float = 0.15,
         soft_masked_loss_weight_train: float = 0.01,
         soft_masked_loss_weight_eval: float = 0.0,
         data_augmentation: bool = True,
-        max_val_mlm_samples: int | None = None,
+        max_val_lm_samples: int | None = None,
         seed: int = 42,
         evals: dict[str, Any] | None = None,
     ):
@@ -139,6 +158,25 @@ class DNADataModule(LightningDataModule):
         self.data_train = None
         self.data_val = None
         self.data_val_traitgym_mendelian_promoter = None
+
+    def apply_labels(self, input_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply objective-specific label creation (override in subclasses).
+
+        Args:
+            input_ids: Tokenized input IDs of shape (batch_size, seq_len)
+
+        Returns:
+            Tuple of (input_ids, labels) for the specific objective
+        """
+        raise NotImplementedError("Subclasses must implement apply_labels")
+
+    def get_objective(self) -> str:
+        """Return the objective type for this data module (override in subclasses).
+
+        Returns:
+            Objective string: "mlm" or "clm"
+        """
+        raise NotImplementedError("Subclasses must implement get_objective")
 
     def prepare_data(self) -> None:
         """Download data and tokenizer (runs on single GPU/process)."""
@@ -244,13 +282,8 @@ class DNADataModule(LightningDataModule):
                 lowercase_mask = np.array([c.islower() for c in s])
                 loss_weight[i][lowercase_mask] = soft_masked_weight
 
-            # Apply MLM masking
-            input_ids, labels = apply_mlm_masking(
-                input_ids,
-                mask_token_id=self.tokenizer.mask_token_id,
-                vocab_size=self.tokenizer.vocab_size,
-                mlm_probability=self.hparams.mlm_probability,
-            )
+            # Apply objective-specific label creation (MLM vs CLM)
+            input_ids, labels = self.apply_labels(input_ids)
 
             return {
                 "input_ids": input_ids,
@@ -282,9 +315,9 @@ class DNADataModule(LightningDataModule):
             # Validation dataset (no augmentation, no shuffling)
             val_dataset = raw_datasets["validation"]
 
-            # Limit samples if max_val_mlm_samples is set
-            if self.hparams.max_val_mlm_samples is not None:
-                val_dataset = val_dataset.take(self.hparams.max_val_mlm_samples)
+            # Limit samples if max_val_lm_samples is set
+            if self.hparams.max_val_lm_samples is not None:
+                val_dataset = val_dataset.take(self.hparams.max_val_lm_samples)
 
             val_dataset = val_dataset.map(
                 lambda ex: transform_batch(
@@ -323,6 +356,7 @@ class DNADataModule(LightningDataModule):
                         dataset_name=traitgym_cfg.get("dataset_name", "songlab/TraitGym"),
                         dataset_config=traitgym_cfg.get("dataset_config", "mendelian_traits"),
                         window_size=traitgym_cfg.get("window_size", 512),
+                        objective=self.get_objective(),
                     )
                 )
 
@@ -369,3 +403,63 @@ class DNADataModule(LightningDataModule):
             return [mlm_val_loader, traitgym_loader]
 
         return mlm_val_loader
+
+
+class MLMDataModule(LMDataModule):
+    """DataModule for Masked Language Modeling.
+
+    Args:
+        mlm_probability: Probability of masking tokens (default: 0.15)
+        **kwargs: Other arguments passed to LMDataModule
+    """
+
+    def __init__(
+        self,
+        mlm_probability: float = 0.15,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.mlm_probability = mlm_probability
+
+    def get_objective(self) -> str:
+        """Return the objective type for MLM."""
+        return "mlm"
+
+    def apply_labels(self, input_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply MLM masking to create labels.
+
+        Args:
+            input_ids: Tokenized input IDs of shape (batch_size, seq_len)
+
+        Returns:
+            Tuple of (masked_input_ids, labels) with -100 for non-masked positions
+        """
+        return apply_mlm_masking(
+            input_ids,
+            mask_token_id=self.tokenizer.mask_token_id,
+            vocab_size=self.tokenizer.vocab_size,
+            mlm_probability=self.mlm_probability,
+        )
+
+
+class CLMDataModule(LMDataModule):
+    """DataModule for Causal Language Modeling.
+
+    Args:
+        **kwargs: Arguments passed to LMDataModule
+    """
+
+    def get_objective(self) -> str:
+        """Return the objective type for CLM."""
+        return "clm"
+
+    def apply_labels(self, input_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Prepare CLM labels (no masking, model handles slicing).
+
+        Args:
+            input_ids: Tokenized input IDs of shape (batch_size, seq_len)
+
+        Returns:
+            Tuple of (input_ids, labels) where labels are same as input_ids
+        """
+        return apply_clm_labels(input_ids)

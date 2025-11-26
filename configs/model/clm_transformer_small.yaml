@@ -1,7 +1,7 @@
-_target_: glm_experiments.models.lm_lit_module.MLMLitModule
+_target_: glm_experiments.models.lm_lit_module.CLMLitModule
 
 net:
-  _target_: glm_experiments.models.components.lm.MLM
+  _target_: glm_experiments.models.components.lm.CLM
   embedder:
     _target_: glm_experiments.models.components.transformer.Embedding
     vocab_size: 7
@@ -13,7 +13,7 @@ net:
     num_heads: 8 # 8 heads → d_head = 16
     # d_ff: auto-computed as floor(128 * 8/3 / 64) * 64 = 320
     rope_theta: 10000.0
-    is_causal: false # Bidirectional for MLM
+    is_causal: true # Causal for CLM
   layer_norm:
     _target_: torch.nn.RMSNorm # Use RMSNorm to match Transformer
     normalized_shape: ${..embedder.d_model}

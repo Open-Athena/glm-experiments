@@ -1,0 +1,278 @@
+"""Lightning modules for language modeling (MLM and CLM)."""
+
+from typing import Any
+
+import torch
+import torch.nn as nn
+from biofoundation.model.scoring import compute_llr_clm, compute_llr_mlm
+from lightning import LightningModule
+from lightning.pytorch.utilities import grad_norm
+from sklearn.metrics import average_precision_score
+from torchmetrics.aggregation import CatMetric
+
+from glm_experiments.utils import pylogger
+
+log = pylogger.RankedLogger(__name__, rank_zero_only=True)
+
+
+class MaskedLMAdapter(nn.Module):
+    """Adapter to make MLM compatible with biofoundation's MaskedLM protocol.
+
+    biofoundation's compute_llr_mlm expects a model with forward(input_ids) -> logits,
+    but our LM model has get_logits(input_ids) -> logits.
+    """
+
+    def __init__(self, lm: nn.Module):
+        super().__init__()
+        self.lm = lm
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Forward pass returning logits (MaskedLM protocol)."""
+        return self.lm.get_logits(input_ids)
+
+
+class CausalLMAdapter(nn.Module):
+    """Adapter to make CLM compatible with biofoundation's CausalLM protocol.
+
+    biofoundation's compute_llr_clm expects a model with forward(input_ids) -> logits.
+    """
+
+    def __init__(self, lm: nn.Module):
+        super().__init__()
+        self.lm = lm
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Forward pass returning logits (CausalLM protocol)."""
+        return self.lm.get_logits(input_ids)
+
+
+class LMLitModule(LightningModule):
+    """Base Lightning module for language modeling.
+
+    Subclasses override create_adapter() and get_loss_name() to implement
+    MLM vs CLM-specific adapters and metric names.
+
+    Args:
+        net: Language model (MLM or CLM)
+        optimizer: Optimizer partial function (from Hydra with _partial_: true)
+        scheduler: Scheduler partial function (from Hydra with _partial_: true)
+    """
+
+    def __init__(
+        self,
+        net: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
+        scheduler: torch.optim.lr_scheduler.LRScheduler,
+    ):
+        super().__init__()
+
+        # Save hyperparameters (excluding net for cleaner logs)
+        self.save_hyperparameters(ignore=["net"], logger=False)
+
+        self.net = net
+
+        # Create objective-specific adapter
+        self.adapter = self.create_adapter(net)
+        self.loss_name = self.get_loss_name()
+
+        # CatMetrics for TraitGym Mendelian Promoter VEP evaluation
+        self.traitgym_mendelian_promoter_labels = CatMetric()
+        self.traitgym_mendelian_promoter_scores = CatMetric()
+
+    def create_adapter(self, net: nn.Module) -> nn.Module:
+        """Create biofoundation adapter (override in subclasses).
+
+        Args:
+            net: Language model
+
+        Returns:
+            Adapter module for biofoundation scoring
+        """
+        raise NotImplementedError("Subclasses must implement create_adapter")
+
+    def get_loss_name(self) -> str:
+        """Get loss metric name (override in subclasses).
+
+        Returns:
+            Loss metric name (e.g., "mlm_loss" or "clm_loss")
+        """
+        raise NotImplementedError("Subclasses must implement get_loss_name")
+
+    def compute_vep_scores(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Compute variant effect prediction scores (override in subclasses).
+
+        Args:
+            batch: Batch dict from TraitGym dataset (fields vary by objective)
+
+        Returns:
+            Pathogenicity scores (higher = more pathogenic)
+        """
+        raise NotImplementedError("Subclasses must implement compute_vep_scores")
+
+    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor, loss_weight: torch.Tensor):
+        """Forward pass through model."""
+        return self.net(input_ids, labels, loss_weight)
+
+    def model_step(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Perform a single model step (shared by train/val).
+
+        Args:
+            batch: Batch dict with keys: input_ids, labels, loss_weight
+
+        Returns:
+            Loss tensor
+        """
+        loss = self.forward(
+            input_ids=batch["input_ids"],
+            labels=batch["labels"],
+            loss_weight=batch["loss_weight"],
+        )
+        return loss
+
+    def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
+        """Training step."""
+        loss = self.model_step(batch)
+        self.log(f"train/{self.loss_name}", loss, on_step=True, on_epoch=False, prog_bar=True)
+        return loss
+
+    def validation_step(
+        self, batch: dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
+    ) -> None:
+        """Validation step for LM and TraitGym Mendelian Promoter dataloaders.
+
+        Args:
+            batch: Batch dict (keys depend on dataloader)
+            batch_idx: Batch index
+            dataloader_idx: 0 for LM validation, 1 for TraitGym Mendelian Promoter
+        """
+        if dataloader_idx == 0:
+            # LM validation
+            loss = self.model_step(batch)
+            self.log(
+                f"val/{self.loss_name}",
+                loss,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                add_dataloader_idx=False,
+                sync_dist=True,
+            )
+        elif dataloader_idx == 1:
+            # TraitGym Mendelian Promoter VEP evaluation
+            # Data comes as PyTorch tensors from HuggingFace dataset with set_format("torch")
+            # Use objective-specific scoring function (override in subclasses)
+            scores = self.compute_vep_scores(batch)
+            self.traitgym_mendelian_promoter_scores.update(scores)
+            self.traitgym_mendelian_promoter_labels.update(batch["label"])
+
+    def on_validation_epoch_end(self) -> None:
+        """Compute and log TraitGym Mendelian Promoter AUPRC at end of validation epoch."""
+        # Only compute if we have TraitGym Mendelian Promoter data
+        if self.traitgym_mendelian_promoter_scores.update_count > 0:
+            scores = self.traitgym_mendelian_promoter_scores.compute().cpu().numpy()
+            labels = self.traitgym_mendelian_promoter_labels.compute().cpu().numpy()
+
+            auprc = average_precision_score(labels, scores)
+            sample_size = len(labels)
+            log.info(f"TraitGym Mendelian Promoter: sample_size={sample_size}, AUPRC={auprc:.4f}")
+            self.log("val/traitgym_mendelian_promoter_auprc", auprc, prog_bar=True)
+
+            # Reset metrics for next epoch
+            self.traitgym_mendelian_promoter_scores.reset()
+            self.traitgym_mendelian_promoter_labels.reset()
+
+    def configure_optimizers(self) -> dict[str, Any]:
+        """Configure optimizer and scheduler."""
+        optimizer = self.hparams.optimizer(params=self.parameters())
+        scheduler = self.hparams.scheduler(optimizer=optimizer)
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "step",
+            },
+        }
+
+    def on_before_optimizer_step(self, optimizer: torch.optim.Optimizer) -> None:
+        """Log gradient norm before optimizer step."""
+        norms = grad_norm(self, norm_type=2)
+        self.log("train/grad_norm", norms["grad_2.0_norm_total"])
+
+
+class MLMLitModule(LMLitModule):
+    """Lightning module for Masked Language Modeling.
+
+    Args:
+        net: MLM model
+        optimizer: Optimizer partial function
+        scheduler: Scheduler partial function
+    """
+
+    def create_adapter(self, net: nn.Module) -> nn.Module:
+        """Create MaskedLMAdapter for biofoundation scoring."""
+        return MaskedLMAdapter(net)
+
+    def get_loss_name(self) -> str:
+        """Return MLM loss metric name."""
+        return "mlm_loss"
+
+    def compute_vep_scores(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Compute MLM variant effect prediction scores.
+
+        Uses biofoundation's compute_llr_mlm function.
+
+        Args:
+            batch: Batch with keys {input_ids, pos, ref, alt, label}
+
+        Returns:
+            Pathogenicity scores (higher = more pathogenic)
+        """
+        # Compute LLR using biofoundation's MLM scorer
+        llr = compute_llr_mlm(
+            model=self.adapter,
+            input_ids=batch["input_ids"],
+            pos=batch["pos"],
+            ref=batch["ref"],
+            alt=batch["alt"],
+        )
+        # Negate LLR for pathogenicity score (higher LLR = more likely, but we want score for pathogenic)
+        return -1 * llr
+
+
+class CLMLitModule(LMLitModule):
+    """Lightning module for Causal Language Modeling.
+
+    Args:
+        net: CLM model
+        optimizer: Optimizer partial function
+        scheduler: Scheduler partial function
+    """
+
+    def create_adapter(self, net: nn.Module) -> nn.Module:
+        """Create CausalLMAdapter for biofoundation scoring."""
+        return CausalLMAdapter(net)
+
+    def get_loss_name(self) -> str:
+        """Return CLM loss metric name."""
+        return "clm_loss"
+
+    def compute_vep_scores(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Compute CLM variant effect prediction scores.
+
+        Uses biofoundation's compute_llr_clm function.
+
+        Args:
+            batch: Batch with keys {input_ids, label} where input_ids is shape [B, 2, L]
+
+        Returns:
+            Pathogenicity scores (higher = more pathogenic)
+        """
+        # Compute LLR using biofoundation's CLM scorer
+        # For CLM, input_ids has shape [B, 2, L] where the 2 sequences are [ref, alt]
+        llr = compute_llr_clm(
+            model=self.adapter,
+            input_ids=batch["input_ids"],
+        )
+        # Negate LLR for pathogenicity score (higher LLR = more likely, but we want score for pathogenic)
+        return -1 * llr

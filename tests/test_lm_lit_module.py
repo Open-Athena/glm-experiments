@@ -1,15 +1,20 @@
-"""Tests for BERT Lightning module."""
+"""Tests for LM Lightning modules."""
 
 import pytest
 import torch
 from hydra import compose, initialize
 
-from glm_experiments.models.bert_lit_module import BERTLitModule, MaskedLMAdapter
+from glm_experiments.models.lm_lit_module import (
+    CausalLMAdapter,
+    CLMLitModule,
+    MaskedLMAdapter,
+    MLMLitModule,
+)
 
 
 @pytest.fixture
-def bert_lit_module():
-    """Create BERTLitModule from config."""
+def mlm_lit_module():
+    """Create MLMLitModule from config."""
     with initialize(version_base="1.3", config_path="../configs"):
         cfg = compose(config_name="train", overrides=["model=bert_bytenet_small"])
 
@@ -18,8 +23,8 @@ def bert_lit_module():
     return hydra.utils.instantiate(cfg.model)
 
 
-def test_bert_lit_module_instantiation():
-    """Test that BERTLitModule can be instantiated from config."""
+def test_mlm_lit_module_instantiation():
+    """Test that MLMLitModule can be instantiated from config."""
     with initialize(version_base="1.3", config_path="../configs"):
         cfg = compose(config_name="train", overrides=["model=bert_bytenet_small"])
 
@@ -27,15 +32,15 @@ def test_bert_lit_module_instantiation():
 
     model = hydra.utils.instantiate(cfg.model)
 
-    assert isinstance(model, BERTLitModule)
+    assert isinstance(model, MLMLitModule)
     assert hasattr(model, "net")
     assert hasattr(model, "hparams")
     assert "optimizer" in model.hparams
     assert "scheduler" in model.hparams
 
 
-def test_bert_lit_module_forward():
-    """Test forward pass through LightningModule."""
+def test_mlm_lit_module_forward():
+    """Test forward pass through MLM LightningModule."""
     with initialize(version_base="1.3", config_path="../configs"):
         cfg = compose(config_name="train", overrides=["model=bert_bytenet_small"])
 
@@ -60,7 +65,7 @@ def test_bert_lit_module_forward():
     assert loss.item() >= 0.0
 
 
-def test_bert_lit_module_configure_optimizers():
+def test_mlm_lit_module_configure_optimizers():
     """Test optimizer and scheduler configuration."""
     with initialize(version_base="1.3", config_path="../configs"):
         cfg = compose(config_name="train", overrides=["model=bert_bytenet_small"])
@@ -76,8 +81,8 @@ def test_bert_lit_module_configure_optimizers():
     assert optim_config["lr_scheduler"]["interval"] == "step"
 
 
-def test_bert_lit_module_training_step():
-    """Test training step."""
+def test_mlm_lit_module_training_step():
+    """Test MLM training step."""
     with initialize(version_base="1.3", config_path="../configs"):
         cfg = compose(config_name="train", overrides=["model=bert_bytenet_small"])
 
@@ -102,8 +107,8 @@ def test_bert_lit_module_training_step():
     assert loss.item() >= 0.0
 
 
-def test_bert_lit_module_validation_step():
-    """Test validation step."""
+def test_mlm_lit_module_validation_step():
+    """Test MLM validation step."""
     with initialize(version_base="1.3", config_path="../configs"):
         cfg = compose(config_name="train", overrides=["model=bert_bytenet_small"])
 
@@ -125,7 +130,7 @@ def test_bert_lit_module_validation_step():
     assert result is None
 
 
-def test_bert_lit_module_save_hyperparameters():
+def test_mlm_lit_module_save_hyperparameters():
     """Test that hyperparameters are saved correctly."""
     with initialize(version_base="1.3", config_path="../configs"):
         cfg = compose(config_name="train", overrides=["model=bert_bytenet_small"])
@@ -142,9 +147,9 @@ def test_bert_lit_module_save_hyperparameters():
     assert "net" not in model.hparams
 
 
-def test_masked_lm_adapter(bert_lit_module):
-    """Test MaskedLMAdapter returns logits from BERT model."""
-    adapter = bert_lit_module.mlm_adapter
+def test_masked_lm_adapter(mlm_lit_module):
+    """Test MaskedLMAdapter returns logits from MLM model."""
+    adapter = mlm_lit_module.adapter
 
     batch_size = 2
     seq_len = 100
@@ -156,7 +161,7 @@ def test_masked_lm_adapter(bert_lit_module):
     assert logits.dtype == torch.float32
 
 
-def test_validation_step_traitgym_mendelian_promoter(bert_lit_module):
+def test_validation_step_traitgym_mendelian_promoter(mlm_lit_module):
     """Test validation_step with TraitGym Mendelian Promoter batch (dataloader_idx=1)."""
     batch_size = 4
     seq_len = 512
@@ -171,32 +176,32 @@ def test_validation_step_traitgym_mendelian_promoter(bert_lit_module):
     }
 
     # Run validation step with dataloader_idx=1 (TraitGym Mendelian Promoter)
-    bert_lit_module.validation_step(batch, batch_idx=0, dataloader_idx=1)
+    mlm_lit_module.validation_step(batch, batch_idx=0, dataloader_idx=1)
 
     # Check that metrics were updated
-    assert bert_lit_module.traitgym_mendelian_promoter_scores.update_count == 1
-    assert bert_lit_module.traitgym_mendelian_promoter_labels.update_count == 1
+    assert mlm_lit_module.traitgym_mendelian_promoter_scores.update_count == 1
+    assert mlm_lit_module.traitgym_mendelian_promoter_labels.update_count == 1
 
 
-def test_on_validation_epoch_end_computes_auprc(bert_lit_module):
+def test_on_validation_epoch_end_computes_auprc(mlm_lit_module):
     """Test on_validation_epoch_end computes AUPRC from accumulated data."""
     # Simulate accumulated data from multiple batches
     scores = torch.tensor([0.1, 0.4, 0.6, 0.9])
     labels = torch.tensor([0, 0, 1, 1])
 
-    bert_lit_module.traitgym_mendelian_promoter_scores.update(scores)
-    bert_lit_module.traitgym_mendelian_promoter_labels.update(labels)
+    mlm_lit_module.traitgym_mendelian_promoter_scores.update(scores)
+    mlm_lit_module.traitgym_mendelian_promoter_labels.update(labels)
 
     # Run epoch end
-    bert_lit_module.on_validation_epoch_end()
+    mlm_lit_module.on_validation_epoch_end()
 
     # Metrics should be reset after computation
-    assert bert_lit_module.traitgym_mendelian_promoter_scores.update_count == 0
-    assert bert_lit_module.traitgym_mendelian_promoter_labels.update_count == 0
+    assert mlm_lit_module.traitgym_mendelian_promoter_scores.update_count == 0
+    assert mlm_lit_module.traitgym_mendelian_promoter_labels.update_count == 0
 
 
-def test_validation_step_mlm_still_works(bert_lit_module):
-    """Test that MLM validation (dataloader_idx=0) still works."""
+def test_validation_step_lm_still_works(mlm_lit_module):
+    """Test that LM validation (dataloader_idx=0) still works."""
     batch_size = 2
     seq_len = 100
 
@@ -207,11 +212,11 @@ def test_validation_step_mlm_still_works(bert_lit_module):
     }
 
     # Should not raise
-    result = bert_lit_module.validation_step(batch, batch_idx=0, dataloader_idx=0)
+    result = mlm_lit_module.validation_step(batch, batch_idx=0, dataloader_idx=0)
     assert result is None
 
 
-def test_on_before_optimizer_step_logs_grad_norm(bert_lit_module):
+def test_on_before_optimizer_step_logs_grad_norm(mlm_lit_module):
     """Test that on_before_optimizer_step computes and logs gradient norm."""
     from lightning.pytorch.utilities import grad_norm
 
@@ -225,13 +230,57 @@ def test_on_before_optimizer_step_logs_grad_norm(bert_lit_module):
     }
 
     # Forward and backward to populate gradients
-    loss = bert_lit_module.model_step(batch)
+    loss = mlm_lit_module.model_step(batch)
     loss.backward()
 
     # Compute expected grad norm
-    norms = grad_norm(bert_lit_module, norm_type=2)
+    norms = grad_norm(mlm_lit_module, norm_type=2)
     expected_norm = norms["grad_2.0_norm_total"]
 
     # Verify gradients exist and norm is reasonable
     assert expected_norm > 0.0
     assert torch.isfinite(torch.tensor(expected_norm))
+
+
+# CLM Tests
+
+
+def test_clm_lit_module_instantiation():
+    """Test that CLMLitModule can be instantiated from config."""
+    with initialize(version_base="1.3", config_path="../configs"):
+        cfg = compose(config_name="train", overrides=["model=clm_transformer_small"])
+
+    import hydra
+
+    model = hydra.utils.instantiate(cfg.model)
+
+    assert isinstance(model, CLMLitModule)
+    assert hasattr(model, "net")
+    assert hasattr(model, "adapter")
+    assert isinstance(model.adapter, CausalLMAdapter)
+
+
+def test_clm_lit_module_forward():
+    """Test forward pass through CLM LightningModule."""
+    with initialize(version_base="1.3", config_path="../configs"):
+        cfg = compose(config_name="train", overrides=["model=clm_transformer_small"])
+
+    import hydra
+
+    model = hydra.utils.instantiate(cfg.model)
+
+    # Create dummy batch
+    batch_size = 2
+    seq_len = 100
+    batch = {
+        "input_ids": torch.randint(0, 6, (batch_size, seq_len)),
+        "labels": torch.randint(0, 6, (batch_size, seq_len)),
+        "loss_weight": torch.ones(batch_size, seq_len),
+    }
+
+    # Forward pass
+    loss = model.model_step(batch)
+
+    assert loss.shape == ()
+    assert loss.dtype == torch.float32
+    assert loss.item() >= 0.0

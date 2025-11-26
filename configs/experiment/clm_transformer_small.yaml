@@ -3,12 +3,12 @@
 # Short training run with small Transformer encoder for quick testing
 
 defaults:
-  - override /model: bert_transformer_small
+  - override /model: clm_transformer_small
 
 logger:
   wandb:
-    name: debug-transformer-small
-    tags: ["debug"]
+    name: debug-clm-transformer-small
+    tags: ["debug", "clm", "transformer", "small"]
 
 trainer:
   max_steps: 100
@@ -30,6 +30,7 @@ model:
     num_training_steps: ${trainer.max_steps}
 
 data:
+  _target_: glm_experiments.data.dna_datamodule.CLMDataModule
   batch_size: 8
   per_device_batch_size: 8
 

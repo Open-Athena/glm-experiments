@@ -325,6 +325,7 @@ class Transformer(nn.Module):
         self.hidden_size = hidden_size
         self.n_layers = n_layers
         self.num_heads = num_heads
+        self.is_causal = is_causal
 
         # Auto-compute d_ff using CS336 formula: floor(d_model * 8/3 / 64) * 64
         if d_ff is None:
