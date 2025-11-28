@@ -66,8 +66,7 @@ class LMLitModule(LightningModule):
     ):
         super().__init__()
 
-        # Save hyperparameters (excluding net for cleaner logs)
-        self.save_hyperparameters(ignore=["net"], logger=False)
+        self.save_hyperparameters(logger=False)
 
         self.net = net
 

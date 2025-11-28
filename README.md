@@ -98,3 +98,13 @@ You can override any parameter from command line like this
 ```bash
 uv run python glm_experiments/train.py trainer.max_epochs=20 data.batch_size=64
 ```
+
+### Loading a Checkpoint
+
+```python
+# replace with CLMLitModule if necessary
+from glm_experiments.models.lm_lit_module import MLMLitModule
+
+# Load plain pytorch model from checkpoint
+model = MLMLitModule.load_from_checkpoint("logs/train/runs/<timestamp>/checkpoints/{step}.ckpt").net
+```
