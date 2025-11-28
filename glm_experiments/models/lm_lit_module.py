@@ -56,6 +56,7 @@ class LMLitModule(LightningModule):
         net: Language model (MLM or CLM)
         optimizer: Optimizer partial function (from Hydra with _partial_: true)
         scheduler: Scheduler partial function (from Hydra with _partial_: true)
+        soft_masked_weight: Weight for soft-masked positions in training loss
     """
 
     def __init__(
@@ -63,12 +64,14 @@ class LMLitModule(LightningModule):
         net: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.LRScheduler,
+        soft_masked_weight: float = 0.01,
     ):
         super().__init__()
 
         self.save_hyperparameters(logger=False)
 
         self.net = net
+        self.soft_masked_weight = soft_masked_weight
 
         # Create objective-specific adapter
         self.adapter = self.create_adapter(net)
@@ -108,31 +111,51 @@ class LMLitModule(LightningModule):
         """
         raise NotImplementedError("Subclasses must implement compute_vep_scores")
 
-    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor, loss_weight: torch.Tensor):
+    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor, soft_masked: torch.Tensor):
         """Forward pass through model."""
-        return self.net(input_ids, labels, loss_weight)
+        return self.net(input_ids, labels, soft_masked, self.soft_masked_weight)
 
-    def model_step(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+    def model_step(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Perform a single model step (shared by train/val).
 
         Args:
-            batch: Batch dict with keys: input_ids, labels, loss_weight
+            batch: Batch dict with keys: input_ids, labels, soft_masked
 
         Returns:
-            Loss tensor
+            Dictionary with loss components
         """
-        loss = self.forward(
+        return self.forward(
             input_ids=batch["input_ids"],
             labels=batch["labels"],
-            loss_weight=batch["loss_weight"],
+            soft_masked=batch["soft_masked"],
         )
-        return loss
 
     def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
         """Training step."""
-        loss = self.model_step(batch)
-        self.log(f"train/{self.loss_name}", loss, on_step=True, on_epoch=False, prog_bar=True)
-        return loss
+        loss_dict = self.model_step(batch)
+
+        # Log all three loss variants
+        self.log(
+            f"train/{self.loss_name}",
+            loss_dict["loss"],
+            on_step=True,
+            on_epoch=False,
+            prog_bar=True,
+        )
+        self.log(
+            f"train/{self.loss_name}_full",
+            loss_dict["loss_full"],
+            on_step=True,
+            on_epoch=False,
+        )
+        self.log(
+            f"train/{self.loss_name}_non_soft_masked",
+            loss_dict["loss_non_soft_masked"],
+            on_step=True,
+            on_epoch=False,
+        )
+
+        return loss_dict["loss"]  # Return main loss for backprop
 
     def validation_step(
         self, batch: dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
@@ -146,13 +169,31 @@ class LMLitModule(LightningModule):
         """
         if dataloader_idx == 0:
             # LM validation
-            loss = self.model_step(batch)
+            loss_dict = self.model_step(batch)
+
+            # Log all three loss variants
             self.log(
                 f"val/{self.loss_name}",
-                loss,
+                loss_dict["loss"],
                 on_step=False,
                 on_epoch=True,
                 prog_bar=True,
+                add_dataloader_idx=False,
+                sync_dist=True,
+            )
+            self.log(
+                f"val/{self.loss_name}_full",
+                loss_dict["loss_full"],
+                on_step=False,
+                on_epoch=True,
+                add_dataloader_idx=False,
+                sync_dist=True,
+            )
+            self.log(
+                f"val/{self.loss_name}_non_soft_masked",
+                loss_dict["loss_non_soft_masked"],
+                on_step=False,
+                on_epoch=True,
                 add_dataloader_idx=False,
                 sync_dist=True,
             )

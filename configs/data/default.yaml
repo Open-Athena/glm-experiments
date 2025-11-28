@@ -11,8 +11,7 @@ num_workers: 4
 pin_memory: true
 
 # Soft masking for genomic soft-masked regions (lowercase nucleotides)
-soft_masked_loss_weight_train: 0.01 # Low weight for soft-masked regions during training
-soft_masked_loss_weight_eval: 0.0 # No weight for soft-masked regions during eval
+soft_masked_weight: 0.01 # Loss weight for soft-masked regions in main training loss
 
 # Data augmentation
 data_augmentation: true # Reverse complement augmentation (training only)

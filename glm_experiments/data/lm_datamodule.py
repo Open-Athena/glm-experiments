@@ -125,8 +125,7 @@ class LMDataModule(LightningDataModule):
         per_device_batch_size: Batch size per device (what fits in GPU memory)
         num_workers: Number of workers for data loading
         pin_memory: Whether to pin memory for faster GPU transfer
-        soft_masked_loss_weight_train: Loss weight for soft-masked regions during training
-        soft_masked_loss_weight_eval: Loss weight for soft-masked regions during evaluation
+        soft_masked_weight: Loss weight for soft-masked regions (not used in data module)
         data_augmentation: Whether to apply reverse complement augmentation (training only)
         max_val_lm_samples: Maximum number of samples for LM validation (None = unlimited)
         seed: Random seed for reproducibility
@@ -140,8 +139,7 @@ class LMDataModule(LightningDataModule):
         per_device_batch_size: int = 256,  # Batch size that fits in GPU memory
         num_workers: int = 8,
         pin_memory: bool = True,
-        soft_masked_loss_weight_train: float = 0.01,
-        soft_masked_loss_weight_eval: float = 0.0,
+        soft_masked_weight: float = 0.01,
         data_augmentation: bool = True,
         max_val_lm_samples: int | None = None,
         seed: int = 42,
@@ -256,16 +254,15 @@ class LMDataModule(LightningDataModule):
                 return_special_tokens_mask=False,
             )["input_ids"]
 
-        def transform_batch(examples: dict, soft_masked_weight: float, data_aug: bool) -> dict:
+        def transform_batch(examples: dict, data_aug: bool) -> dict:
             """Transform a batch of examples.
 
             Args:
                 examples: Batch of examples with 'seq' field
-                soft_masked_weight: Loss weight for lowercase nucleotides
                 data_aug: Whether to apply reverse complement augmentation
 
             Returns:
-                Dictionary with input_ids, labels, and loss_weight (all tensors)
+                Dictionary with input_ids, labels, and soft_masked (all tensors)
             """
             seq = examples["seq"]
 
@@ -276,11 +273,11 @@ class LMDataModule(LightningDataModule):
             # Tokenize
             input_ids = torch.tensor(tokenize(seq), dtype=torch.int8)
 
-            # Create loss weights (lower weight for soft-masked lowercase regions)
-            loss_weight = torch.ones(input_ids.shape, dtype=torch.float16)
+            # Create soft_masked boolean tensor (True for lowercase nucleotides)
+            soft_masked = torch.zeros(input_ids.shape, dtype=torch.bool)
             for i, s in enumerate(seq):
                 lowercase_mask = np.array([c.islower() for c in s])
-                loss_weight[i][lowercase_mask] = soft_masked_weight
+                soft_masked[i][lowercase_mask] = True
 
             # Apply objective-specific label creation (MLM vs CLM)
             input_ids, labels = self.apply_labels(input_ids)
@@ -288,7 +285,7 @@ class LMDataModule(LightningDataModule):
             return {
                 "input_ids": input_ids,
                 "labels": labels,
-                "loss_weight": loss_weight,
+                "soft_masked": soft_masked,
             }
 
         # Load raw dataset with streaming
@@ -301,7 +298,6 @@ class LMDataModule(LightningDataModule):
             train_dataset = train_dataset.map(
                 lambda ex: transform_batch(
                     ex,
-                    soft_masked_weight=self.hparams.soft_masked_loss_weight_train,
                     data_aug=self.hparams.data_augmentation,
                 ),
                 batched=True,
@@ -322,7 +318,6 @@ class LMDataModule(LightningDataModule):
             val_dataset = val_dataset.map(
                 lambda ex: transform_batch(
                     ex,
-                    soft_masked_weight=self.hparams.soft_masked_loss_weight_eval,
                     data_aug=False,
                 ),
                 batched=True,

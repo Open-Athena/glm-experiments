@@ -60,19 +60,19 @@ class LM(nn.Module):
         self,
         logits: torch.Tensor,
         labels: torch.Tensor,
-        loss_weight: torch.Tensor,
+        soft_masked: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Prepare logits, labels, and weights for loss computation.
+        """Prepare logits, labels, and soft_masked for loss computation.
 
         Override in subclasses to implement MLM vs CLM-specific slicing/filtering.
 
         Args:
             logits: Logits of shape (batch, seq_len, vocab_size)
             labels: Target labels of shape (batch, seq_len)
-            loss_weight: Loss weights of shape (batch, seq_len)
+            soft_masked: Boolean mask of shape (batch, seq_len)
 
         Returns:
-            Tuple of (logits, labels, loss_weight) ready for loss computation
+            Tuple of (logits, labels, soft_masked) ready for loss computation
         """
         raise NotImplementedError("Subclasses must implement prepare_for_loss")
 
@@ -80,44 +80,69 @@ class LM(nn.Module):
         self,
         logits: torch.Tensor,
         labels: torch.Tensor,
-        loss_weight: torch.Tensor,
-    ) -> torch.Tensor:
-        """Compute weighted cross-entropy loss.
+        soft_masked: torch.Tensor,
+        soft_masked_weight: float,
+    ) -> dict[str, torch.Tensor]:
+        """Compute weighted cross-entropy loss with three variants.
 
-        Shared loss computation logic for MLM and CLM.
+        Computes three loss values:
+        1. loss_full: All tokens weighted equally (baseline)
+        2. loss_non_soft_masked: Only non-soft-masked tokens
+        3. loss: Training loss with soft_masked_weight applied
 
         Args:
             logits: Logits (1D or 2D)
             labels: Target labels (1D)
-            loss_weight: Loss weights (1D)
+            soft_masked: Boolean mask (1D), True for soft-masked positions
+            soft_masked_weight: Weight for soft-masked positions in training loss
 
         Returns:
-            Scalar loss value
+            Dictionary with keys: loss, loss_full, loss_non_soft_masked
         """
-        loss = F.cross_entropy(logits, labels, reduction="none")
-        loss = (loss * loss_weight / loss_weight.sum()).sum()
-        return loss
+        # Single cross-entropy computation (efficient)
+        loss_per_token = F.cross_entropy(logits, labels, reduction="none")
+
+        # Create three weight masks
+        weight_full = torch.ones_like(loss_per_token)
+        weight_non_soft_masked = (~soft_masked).float()
+        weight_training = torch.where(soft_masked, soft_masked_weight, 1.0)
+
+        # Compute normalized losses
+        def normalize_and_sum(loss: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+            weight_sum = weight.sum()
+            if weight_sum > 0:
+                return (loss * weight / weight_sum).sum()
+            else:
+                # Handle edge case: no tokens with weight
+                return torch.tensor(0.0, device=loss.device, dtype=loss.dtype)
+
+        return {
+            "loss": normalize_and_sum(loss_per_token, weight_training),
+            "loss_full": normalize_and_sum(loss_per_token, weight_full),
+            "loss_non_soft_masked": normalize_and_sum(loss_per_token, weight_non_soft_masked),
+        }
 
     def forward(
         self,
         input_ids: torch.Tensor,
         labels: torch.Tensor,
-        loss_weight: torch.Tensor,
-    ) -> torch.Tensor:
+        soft_masked: torch.Tensor,
+        soft_masked_weight: float,
+    ) -> dict[str, torch.Tensor]:
         """Forward pass with loss calculation.
 
         Args:
             input_ids: Input token IDs of shape (batch, seq_len), int8 or long
             labels: True token IDs of shape (batch, seq_len)
-            loss_weight: Per-token loss weights of shape (batch, seq_len)
+            soft_masked: Boolean mask of shape (batch, seq_len), True for soft-masked positions
+            soft_masked_weight: Weight for soft-masked positions in training loss
 
         Returns:
-            Weighted cross-entropy loss (scalar)
+            Dictionary with loss components (loss, loss_full, loss_non_soft_masked)
         """
         logits = self.get_logits(input_ids)
-        logits, labels, loss_weight = self.prepare_for_loss(logits, labels, loss_weight)
-        loss = self.compute_loss(logits, labels, loss_weight)
-        return loss
+        logits, labels, soft_masked = self.prepare_for_loss(logits, labels, soft_masked)
+        return self.compute_loss(logits, labels, soft_masked, soft_masked_weight)
 
 
 class MLM(LM):
@@ -130,30 +155,30 @@ class MLM(LM):
         self,
         logits: torch.Tensor,
         labels: torch.Tensor,
-        loss_weight: torch.Tensor,
+        soft_masked: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Filter to masked positions only.
 
         Args:
             logits: Logits of shape (batch, seq_len, vocab_size)
             labels: Target labels of shape (batch, seq_len), -100 for ignored positions
-            loss_weight: Loss weights of shape (batch, seq_len)
+            soft_masked: Boolean mask of shape (batch, seq_len)
 
         Returns:
-            Filtered (logits, labels, loss_weight) for masked positions only
+            Filtered (logits, labels, soft_masked) for masked positions only
         """
         # Reshape to 1D
         logits = logits.view(-1, logits.size(-1))
         labels = labels.view(-1).long()
-        loss_weight = loss_weight.view(-1)
+        soft_masked = soft_masked.view(-1)
 
         # Filter to masked positions (labels != -100)
         mask = labels != -100
         logits = logits[mask]
         labels = labels[mask]
-        loss_weight = loss_weight[mask]
+        soft_masked = soft_masked[mask]
 
-        return logits, labels, loss_weight
+        return logits, labels, soft_masked
 
 
 class CLM(LM):
@@ -182,21 +207,21 @@ class CLM(LM):
         self,
         logits: torch.Tensor,
         labels: torch.Tensor,
-        loss_weight: torch.Tensor,
+        soft_masked: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Slice for next-token prediction.
 
         Args:
             logits: Logits of shape (batch, seq_len, vocab_size)
             labels: Target labels of shape (batch, seq_len) (same as input_ids)
-            loss_weight: Loss weights of shape (batch, seq_len)
+            soft_masked: Boolean mask of shape (batch, seq_len)
 
         Returns:
-            Sliced (logits, labels, loss_weight) for next-token prediction
+            Sliced (logits, labels, soft_masked) for next-token prediction
         """
         # Slice: logits[:, :-1] predicts labels[:, 1:]
         logits = logits[:, :-1].reshape(-1, logits.size(-1))
         labels = labels[:, 1:].reshape(-1).long()
-        loss_weight = loss_weight[:, 1:].reshape(-1)
+        soft_masked = soft_masked[:, 1:].reshape(-1)
 
-        return logits, labels, loss_weight
+        return logits, labels, soft_masked

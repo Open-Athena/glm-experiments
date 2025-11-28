@@ -11,10 +11,10 @@ logger:
     tags: ["debug", "clm", "transformer", "small"]
 
 trainer:
-  max_steps: 100
-  log_every_n_steps: 10
-  val_check_interval: 10
-  limit_val_batches: 2
+  max_steps: 300
+  log_every_n_steps: 100
+  val_check_interval: 100
+  limit_val_batches: 10
   check_val_every_n_epoch: null
 
 model:
@@ -33,5 +33,6 @@ data:
   _target_: glm_experiments.data.lm_datamodule.CLMDataModule
   batch_size: 8
   per_device_batch_size: 8
+  soft_masked_weight: 0.5
 
 compile: false

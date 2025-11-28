@@ -6,7 +6,7 @@ import torch
 from Bio.Seq import Seq
 from hydra import compose, initialize
 
-from glm_experiments.data.dna_datamodule import (
+from glm_experiments.data.lm_datamodule import (
     MLMDataModule,
     apply_mlm_masking,
     apply_reverse_complement,
@@ -26,8 +26,7 @@ def dna_datamodule():
         num_workers=0,  # Single thread for testing
         pin_memory=False,
         mlm_probability=0.15,
-        soft_masked_loss_weight_train=0.01,
-        soft_masked_loss_weight_eval=0.0,
+        soft_masked_weight=0.01,
         data_augmentation=True,
         seed=42,
     )
@@ -74,22 +73,22 @@ def test_batch_shape_and_types(dna_datamodule):
     # Check batch keys
     assert "input_ids" in batch
     assert "labels" in batch
-    assert "loss_weight" in batch
+    assert "soft_masked" in batch
 
     # Check shapes match
     batch_size = batch["input_ids"].shape[0]
     seq_length = batch["input_ids"].shape[1]
     assert batch["labels"].shape == (batch_size, seq_length)
-    assert batch["loss_weight"].shape == (batch_size, seq_length)
+    assert batch["soft_masked"].shape == (batch_size, seq_length)
 
     # Check dtypes
     assert batch["input_ids"].dtype == torch.int8
     assert batch["labels"].dtype == torch.int8
-    assert batch["loss_weight"].dtype == torch.float16
+    assert batch["soft_masked"].dtype == torch.bool
 
 
-def test_soft_masking_loss_weights():
-    """Test that soft masking loss weights are computed correctly for lowercase nucleotides."""
+def test_soft_masking_boolean_tensor():
+    """Test that soft_masked boolean tensor is computed correctly for lowercase nucleotides."""
     from transformers import AutoTokenizer
 
     # Create a simple test case with mixed case sequence
@@ -97,7 +96,6 @@ def test_soft_masking_loss_weights():
 
     # Test sequence with lowercase (soft-masked) regions
     test_seq = ["ATGCatgcATGC"]  # Lowercase in middle
-    soft_masked_weight = 0.01
 
     # Tokenize
     tokenized = tokenizer(
@@ -109,19 +107,19 @@ def test_soft_masking_loss_weights():
         return_special_tokens_mask=False,
     )
 
-    # Create loss weights
-    input_ids = torch.tensor(tokenized["input_ids"], dtype=torch.uint8)
-    loss_weight = torch.ones(input_ids.shape, dtype=torch.float16)
+    # Create soft_masked boolean tensor
+    input_ids = torch.tensor(tokenized["input_ids"], dtype=torch.int8)
+    soft_masked = torch.zeros(input_ids.shape, dtype=torch.bool)
 
     for i, s in enumerate(test_seq):
         lowercase_mask = np.array([c.islower() for c in s])
-        loss_weight[i][lowercase_mask] = soft_masked_weight
+        soft_masked[i][lowercase_mask] = True
 
-    # Check that lowercase positions have lower weight
+    # Check that lowercase positions are True
     seq = test_seq[0]
     lowercase_count = sum(1 for c in seq if c.islower())
-    assert (loss_weight[0] == soft_masked_weight).sum() == lowercase_count
-    assert (loss_weight[0] == 1.0).sum() > 0  # Uppercase positions have weight 1.0
+    assert soft_masked[0].sum() == lowercase_count
+    assert (~soft_masked[0]).sum() > 0  # Uppercase positions are False
 
 
 def test_reverse_complement():
@@ -314,24 +312,22 @@ def test_hydra_instantiation():
 
 
 @pytest.mark.slow
-def test_validation_no_soft_masking(dna_datamodule):
-    """Test that validation split has no soft masking (weight = 0.0)."""
+def test_validation_soft_masked_boolean(dna_datamodule):
+    """Test that validation split produces soft_masked boolean tensor."""
     dna_datamodule.prepare_data()
     dna_datamodule.setup(stage="fit")
 
     val_loader = dna_datamodule.val_dataloader()
     val_batch = next(iter(val_loader))
 
-    # Check that soft_masked_loss_weight_eval is 0.0
-    assert dna_datamodule.hparams.soft_masked_loss_weight_eval == 0.0
+    # Check that soft_masked is boolean tensor
+    assert val_batch["soft_masked"].dtype == torch.bool
 
-    # For validation, loss_weight should not have many positions with very low weights
-    # (though it depends on the data)
-    loss_weight = val_batch["loss_weight"]
-    min_weight = loss_weight.min().item()
+    # Check that soft_masked has correct shape
+    assert val_batch["soft_masked"].shape == val_batch["input_ids"].shape
 
-    # Min weight should be 0.0 for eval (soft-masked positions)
-    assert min_weight == 0.0 or min_weight == 1.0
+    # The specific weight applied to soft_masked positions is determined by the model's
+    # soft_masked_weight parameter, not by the data module
 
 
 def test_val_check_interval_adjustment_with_accumulation():

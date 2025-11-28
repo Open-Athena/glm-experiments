@@ -40,20 +40,24 @@ def test_mlm_forward(mlm_model):
     mask = torch.rand(batch_size, seq_len) < 0.15
     labels[~mask] = -100  # -100 means don't compute loss
 
-    # Loss weights (1.0 for hard-masked, 0.01 for soft-masked)
-    loss_weight = torch.ones(batch_size, seq_len)
+    # soft_masked boolean tensor (all False for simplicity)
+    soft_masked = torch.zeros(batch_size, seq_len, dtype=torch.bool)
+    soft_masked_weight = 0.01
 
     # Forward pass
-    loss = mlm_model(input_ids, labels, loss_weight)
+    loss_dict = mlm_model(input_ids, labels, soft_masked, soft_masked_weight)
 
-    # Should return scalar loss
-    assert loss.shape == ()
-    assert loss.dtype == torch.float32
-    assert loss.item() >= 0.0  # Loss should be non-negative
+    # Should return dict with three losses
+    assert isinstance(loss_dict, dict)
+    assert "loss" in loss_dict
+    assert "loss_full" in loss_dict
+    assert "loss_non_soft_masked" in loss_dict
+    assert loss_dict["loss"].dtype == torch.float32
+    assert loss_dict["loss"].item() >= 0.0  # Loss should be non-negative
 
 
 def test_mlm_weighted_loss(mlm_model):
-    """Test MLM correctly applies loss weights."""
+    """Test MLM loss decomposition with soft_masked positions."""
     batch_size = 2
     seq_len = 100
 
@@ -63,16 +67,27 @@ def test_mlm_weighted_loss(mlm_model):
     # Mask all positions
     labels[:, :] = torch.randint(0, 6, (batch_size, seq_len))
 
-    # Two scenarios: all weight 1.0 vs all weight 0.01
-    loss_weight_high = torch.ones(batch_size, seq_len)
-    loss_weight_low = torch.ones(batch_size, seq_len) * 0.01
+    # Create soft_masked pattern (half soft-masked, half not)
+    soft_masked = torch.zeros(batch_size, seq_len, dtype=torch.bool)
+    soft_masked[:, seq_len // 2 :] = True  # Second half is soft-masked
 
-    loss_high = mlm_model(input_ids, labels, loss_weight_high)
-    loss_low = mlm_model(input_ids, labels, loss_weight_low)
+    # Test with different soft_masked_weights
+    soft_masked_weight_high = 1.0  # No difference
+    soft_masked_weight_low = 0.01  # Large difference
 
-    # Losses should be similar (normalized by weight sum)
-    # But not exactly equal due to floating point
-    assert torch.allclose(loss_high, loss_low, rtol=1e-5)
+    loss_dict_high = mlm_model(input_ids, labels, soft_masked, soft_masked_weight_high)
+    loss_dict_low = mlm_model(input_ids, labels, soft_masked, soft_masked_weight_low)
+
+    # When soft_masked_weight=1.0, all three losses should be equal
+    assert torch.allclose(loss_dict_high["loss"], loss_dict_high["loss_full"], rtol=1e-5)
+    assert torch.allclose(
+        loss_dict_high["loss"], loss_dict_high["loss_non_soft_masked"], rtol=1e-5
+    )
+
+    # When soft_masked_weight=0.01, losses should differ
+    # loss < loss_full (because soft-masked tokens have less weight)
+    # loss_non_soft_masked should be different (only hard-masked)
+    assert not torch.allclose(loss_dict_low["loss"], loss_dict_low["loss_full"], rtol=0.1)
 
 
 def test_mlm_no_masked_positions():
@@ -88,11 +103,12 @@ def test_mlm_no_masked_positions():
 
     input_ids = torch.randint(0, 6, (batch_size, seq_len))
     labels = torch.full((batch_size, seq_len), -100)  # All ignored
-    loss_weight = torch.ones(batch_size, seq_len)
+    soft_masked = torch.zeros(batch_size, seq_len, dtype=torch.bool)
+    soft_masked_weight = 0.01
 
-    # Should still work (loss might be NaN or 0)
-    loss = model(input_ids, labels, loss_weight)
-    assert loss.shape == ()
+    # Should still work (loss will be 0.0 when no valid positions)
+    loss_dict = model(input_ids, labels, soft_masked, soft_masked_weight)
+    assert loss_dict["loss"].item() == 0.0
 
 
 def test_mlm_all_masked_positions():
@@ -108,12 +124,12 @@ def test_mlm_all_masked_positions():
 
     input_ids = torch.randint(0, 6, (batch_size, seq_len))
     labels = torch.randint(0, 6, (batch_size, seq_len))  # All valid
-    loss_weight = torch.ones(batch_size, seq_len)
+    soft_masked = torch.zeros(batch_size, seq_len, dtype=torch.bool)
+    soft_masked_weight = 0.01
 
-    loss = model(input_ids, labels, loss_weight)
-    assert loss.shape == ()
-    assert loss.dtype == torch.float32
-    assert loss.item() >= 0.0
+    loss_dict = model(input_ids, labels, soft_masked, soft_masked_weight)
+    assert loss_dict["loss"].dtype == torch.float32
+    assert loss_dict["loss"].item() >= 0.0
 
 
 def test_mlm_batch_size_one():
@@ -126,11 +142,11 @@ def test_mlm_batch_size_one():
 
     input_ids = torch.randint(0, 6, (1, 50))
     labels = torch.randint(0, 6, (1, 50))
-    loss_weight = torch.ones(1, 50)
+    soft_masked = torch.zeros(1, 50, dtype=torch.bool)
+    soft_masked_weight = 0.01
 
-    loss = model(input_ids, labels, loss_weight)
-    assert loss.shape == ()
-    assert loss.item() >= 0.0
+    loss_dict = model(input_ids, labels, soft_masked, soft_masked_weight)
+    assert loss_dict["loss"].item() >= 0.0
 
 
 def test_mlm_get_logits(mlm_model):
@@ -153,7 +169,8 @@ def test_mlm_get_logits_used_by_forward(mlm_model):
 
     input_ids = torch.randint(0, 6, (batch_size, seq_len))
     labels = torch.randint(0, 6, (batch_size, seq_len))
-    loss_weight = torch.ones(batch_size, seq_len)
+    soft_masked = torch.zeros(batch_size, seq_len, dtype=torch.bool)
+    soft_masked_weight = 0.01
 
     # Get logits directly
     logits = mlm_model.get_logits(input_ids)
@@ -185,16 +202,18 @@ def test_clm_forward(clm_model):
     input_ids = torch.randint(0, 6, (batch_size, seq_len))
     labels = input_ids.clone()  # Labels are same as input_ids for CLM
 
-    # Loss weights (can downweight soft-masked positions)
-    loss_weight = torch.ones(batch_size, seq_len)
+    # soft_masked boolean tensor (can indicate soft-masked positions)
+    soft_masked = torch.zeros(batch_size, seq_len, dtype=torch.bool)
+    soft_masked_weight = 0.01
 
     # Forward pass
-    loss = clm_model(input_ids, labels, loss_weight)
+    loss_dict = clm_model(input_ids, labels, soft_masked, soft_masked_weight)
 
-    # Should return scalar loss
-    assert loss.shape == ()
-    assert loss.dtype == torch.float32
-    assert loss.item() >= 0.0
+    # Should return dict with three losses
+    assert isinstance(loss_dict, dict)
+    assert "loss" in loss_dict
+    assert loss_dict["loss"].dtype == torch.float32
+    assert loss_dict["loss"].item() >= 0.0
 
 
 def test_clm_validates_causal_encoder():

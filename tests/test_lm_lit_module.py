@@ -54,15 +54,16 @@ def test_mlm_lit_module_forward():
     batch = {
         "input_ids": torch.randint(0, 6, (batch_size, seq_len)),
         "labels": torch.randint(0, 6, (batch_size, seq_len)),
-        "loss_weight": torch.ones(batch_size, seq_len),
+        "soft_masked": torch.zeros(batch_size, seq_len, dtype=torch.bool),
     }
 
     # Forward pass
-    loss = model.model_step(batch)
+    loss_dict = model.model_step(batch)
 
-    assert loss.shape == ()
-    assert loss.dtype == torch.float32
-    assert loss.item() >= 0.0
+    assert isinstance(loss_dict, dict)
+    assert "loss" in loss_dict
+    assert loss_dict["loss"].dtype == torch.float32
+    assert loss_dict["loss"].item() >= 0.0
 
 
 def test_mlm_lit_module_configure_optimizers():
@@ -96,7 +97,7 @@ def test_mlm_lit_module_training_step():
     batch = {
         "input_ids": torch.randint(0, 6, (batch_size, seq_len)),
         "labels": torch.randint(0, 6, (batch_size, seq_len)),
-        "loss_weight": torch.ones(batch_size, seq_len),
+        "soft_masked": torch.zeros(batch_size, seq_len, dtype=torch.bool),
     }
 
     # Training step
@@ -122,7 +123,7 @@ def test_mlm_lit_module_validation_step():
     batch = {
         "input_ids": torch.randint(0, 6, (batch_size, seq_len)),
         "labels": torch.randint(0, 6, (batch_size, seq_len)),
-        "loss_weight": torch.ones(batch_size, seq_len),
+        "soft_masked": torch.zeros(batch_size, seq_len, dtype=torch.bool),
     }
 
     # Validation step (returns None)
@@ -208,7 +209,7 @@ def test_validation_step_lm_still_works(mlm_lit_module):
     batch = {
         "input_ids": torch.randint(0, 7, (batch_size, seq_len)),
         "labels": torch.randint(0, 7, (batch_size, seq_len)),
-        "loss_weight": torch.ones(batch_size, seq_len),
+        "soft_masked": torch.zeros(batch_size, seq_len, dtype=torch.bool),
     }
 
     # Should not raise
@@ -226,12 +227,12 @@ def test_on_before_optimizer_step_logs_grad_norm(mlm_lit_module):
     batch = {
         "input_ids": torch.randint(0, 6, (batch_size, seq_len)),
         "labels": torch.randint(0, 6, (batch_size, seq_len)),
-        "loss_weight": torch.ones(batch_size, seq_len),
+        "soft_masked": torch.zeros(batch_size, seq_len, dtype=torch.bool),
     }
 
     # Forward and backward to populate gradients
-    loss = mlm_lit_module.model_step(batch)
-    loss.backward()
+    loss_dict = mlm_lit_module.model_step(batch)
+    loss_dict["loss"].backward()
 
     # Compute expected grad norm
     norms = grad_norm(mlm_lit_module, norm_type=2)
@@ -275,12 +276,13 @@ def test_clm_lit_module_forward():
     batch = {
         "input_ids": torch.randint(0, 6, (batch_size, seq_len)),
         "labels": torch.randint(0, 6, (batch_size, seq_len)),
-        "loss_weight": torch.ones(batch_size, seq_len),
+        "soft_masked": torch.zeros(batch_size, seq_len, dtype=torch.bool),
     }
 
     # Forward pass
-    loss = model.model_step(batch)
+    loss_dict = model.model_step(batch)
 
-    assert loss.shape == ()
-    assert loss.dtype == torch.float32
-    assert loss.item() >= 0.0
+    assert isinstance(loss_dict, dict)
+    assert "loss" in loss_dict
+    assert loss_dict["loss"].dtype == torch.float32
+    assert loss_dict["loss"].item() >= 0.0

@@ -13,7 +13,7 @@ import torch
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, Dataset, get_worker_info
 
-from glm_experiments.data.dna_datamodule import apply_reverse_complement
+from glm_experiments.data.lm_datamodule import apply_reverse_complement
 
 
 class SimpleDataset(Dataset):
@@ -391,10 +391,10 @@ def test_dna_datamodule_ddp_simulation():
     with ddp_spawn. The core functionality (data splitting, worker seeding) is tested
     by other tests in this file.
     """
-    from glm_experiments.data.dna_datamodule import DNADataModule
+    from glm_experiments.data.lm_datamodule import MLMDataModule
 
     # Create datamodule with small batch size for testing
-    dm = DNADataModule(
+    dm = MLMDataModule(
         dataset_name="songlab/gpn-animal-promoter-dataset",
         tokenizer_name="gonzalobenegas/tokenizer-dna-mlm",
         batch_size=64,  # Will be 32 per device with 2 devices
@@ -432,11 +432,11 @@ def test_dna_datamodule_reproducibility():
     The DNADataModule seeds numpy/torch in setup() and uses worker_init_fn to
     propagate seeds to DataLoader workers.
     """
-    from glm_experiments.data.dna_datamodule import DNADataModule
+    from glm_experiments.data.lm_datamodule import MLMDataModule
 
     def get_first_batch(seed: int) -> dict:
         """Get the first batch from the datamodule with given seed."""
-        dm = DNADataModule(
+        dm = MLMDataModule(
             dataset_name="songlab/gpn-animal-promoter-dataset",
             tokenizer_name="gonzalobenegas/tokenizer-dna-mlm",
             batch_size=32,

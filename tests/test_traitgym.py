@@ -187,7 +187,7 @@ class TestDNADataModuleWithTraitGymMendelianPromoter:
 
     def test_datamodule_accepts_evals_config(self):
         """Test that DNADataModule accepts evals config parameter."""
-        from glm_experiments.data.dna_datamodule import DNADataModule
+        from glm_experiments.data.lm_datamodule import MLMDataModule
 
         evals_config = {
             "traitgym_mendelian_promoter": {
@@ -200,15 +200,15 @@ class TestDNADataModuleWithTraitGymMendelianPromoter:
             }
         }
 
-        dm = DNADataModule(evals=evals_config)
+        dm = MLMDataModule(evals=evals_config)
 
         assert dm.hparams.evals == evals_config
 
     def test_datamodule_evals_none_by_default(self):
         """Test that evals is None by default."""
-        from glm_experiments.data.dna_datamodule import DNADataModule
+        from glm_experiments.data.lm_datamodule import MLMDataModule
 
-        dm = DNADataModule()
+        dm = MLMDataModule()
 
         assert dm.hparams.evals is None
         assert dm.data_val_traitgym_mendelian_promoter is None
@@ -217,9 +217,9 @@ class TestDNADataModuleWithTraitGymMendelianPromoter:
         """Test that val_dataloader returns single DataLoader without evals."""
         from torch.utils.data import DataLoader
 
-        from glm_experiments.data.dna_datamodule import DNADataModule
+        from glm_experiments.data.lm_datamodule import MLMDataModule
 
-        dm = DNADataModule(
+        dm = MLMDataModule(
             batch_size=32,
             num_workers=0,
             evals=None,
@@ -238,7 +238,7 @@ class TestDNADataModuleWithTraitGymMendelianPromoter:
         """Test that val_dataloader returns list of DataLoaders with evals."""
         from torch.utils.data import DataLoader
 
-        from glm_experiments.data.dna_datamodule import DNADataModule
+        from glm_experiments.data.lm_datamodule import MLMDataModule
 
         evals_config = {
             "traitgym_mendelian_promoter": {
@@ -246,7 +246,7 @@ class TestDNADataModuleWithTraitGymMendelianPromoter:
             }
         }
 
-        dm = DNADataModule(
+        dm = MLMDataModule(
             batch_size=32,
             num_workers=0,
             evals=evals_config,
@@ -269,7 +269,7 @@ class TestDNADataModuleWithTraitGymMendelianPromoter:
         """Test that DataModule can be instantiated from Hydra config with evals."""
         from hydra import compose, initialize
 
-        from glm_experiments.data.dna_datamodule import DNADataModule
+        from glm_experiments.data.lm_datamodule import MLMDataModule
 
         with initialize(version_base="1.3", config_path="../configs"):
             cfg = compose(
@@ -283,7 +283,7 @@ class TestDNADataModuleWithTraitGymMendelianPromoter:
             dm = hydra.utils.instantiate(cfg.data)
 
             # Check that it's the right type
-            assert isinstance(dm, DNADataModule)
+            assert isinstance(dm, MLMDataModule)
 
             # Check evals config is present
             assert dm.hparams.evals is not None
