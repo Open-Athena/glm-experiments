@@ -5,7 +5,7 @@
 
 defaults:
   - override /data: gpn_animal_promoter
-  - override /model: bert_transformer_base
+  - override /model: mlm_transformer_base
   - override /trainer: gpn_animal_promoter
 
 logger:

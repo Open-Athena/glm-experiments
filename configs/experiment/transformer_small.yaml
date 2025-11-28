@@ -3,7 +3,7 @@
 # Short training run with small Transformer encoder for quick testing
 
 defaults:
-  - override /model: bert_transformer_small
+  - override /model: mlm_transformer_small
 
 logger:
   wandb:

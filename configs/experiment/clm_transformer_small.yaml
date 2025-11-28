@@ -30,7 +30,7 @@ model:
     num_training_steps: ${trainer.max_steps}
 
 data:
-  _target_: glm_experiments.data.dna_datamodule.CLMDataModule
+  _target_: glm_experiments.data.lm_datamodule.CLMDataModule
   batch_size: 8
   per_device_batch_size: 8
 

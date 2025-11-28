@@ -1,4 +1,4 @@
-_target_: glm_experiments.data.dna_datamodule.MLMDataModule
+_target_: glm_experiments.data.lm_datamodule.MLMDataModule
 
 # Dataset and tokenizer (override in specific configs)
 dataset_name: data/gpn-animal-promoter-dataset
