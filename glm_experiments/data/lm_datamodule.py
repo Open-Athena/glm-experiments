@@ -12,10 +12,7 @@ from lightning import LightningDataModule
 from torch.utils.data import DataLoader, default_collate
 from transformers import AutoTokenizer
 
-from glm_experiments.data.traitgym import (
-    download_genome,
-    load_traitgym_mendelian_promoter_dataset,
-)
+from glm_experiments.data.evals import download_genome, load_eval_dataset
 from glm_experiments.utils.pylogger import RankedLogger
 
 log = RankedLogger(__name__, rank_zero_only=True)
@@ -155,7 +152,8 @@ class LMDataModule(LightningDataModule):
         self.tokenizer = None
         self.data_train = None
         self.data_val = None
-        self.data_val_traitgym_mendelian_promoter = None
+        # Dynamic eval datasets (keyed by eval_name from config)
+        self.eval_datasets: dict[str, Any] = {}
 
     def apply_labels(self, input_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Apply objective-specific label creation (override in subclasses).
@@ -182,13 +180,12 @@ class LMDataModule(LightningDataModule):
         # Download tokenizer only
         AutoTokenizer.from_pretrained(self.hparams.tokenizer_name)  # nosec B615
 
-        # Download reference genome for TraitGym Mendelian Promoter evaluation if configured
-        evals = self.hparams.get("evals") or {}
-        traitgym_cfg = evals.get("traitgym_mendelian_promoter")
-        if traitgym_cfg:
+        # Download genomes for all configured eval datasets
+        evals = self.hparams.get("evals") or []
+        for eval_cfg in evals:
             download_genome(
-                url=traitgym_cfg["genome_url"],
-                path=traitgym_cfg["genome_path"],
+                url=eval_cfg["genome_url"],
+                data_dir=eval_cfg.get("data_dir", "data"),
             )
 
     def setup(self, stage: str | None = None) -> None:
@@ -340,19 +337,22 @@ class LMDataModule(LightningDataModule):
             self.data_train = train_dataset
             self.data_val = val_dataset
 
-            # Load TraitGym Mendelian Promoter evaluation dataset if configured
-            evals = self.hparams.get("evals") or {}
-            traitgym_cfg = evals.get("traitgym_mendelian_promoter")
-            if traitgym_cfg:
-                self.data_val_traitgym_mendelian_promoter = (
-                    load_traitgym_mendelian_promoter_dataset(
-                        tokenizer=HFTokenizer(self.tokenizer),
-                        genome_path=traitgym_cfg["genome_path"],
-                        dataset_name=traitgym_cfg.get("dataset_name", "songlab/TraitGym"),
-                        dataset_config=traitgym_cfg.get("dataset_config", "mendelian_traits"),
-                        window_size=traitgym_cfg.get("window_size", 512),
-                        objective=self.get_objective(),
-                    )
+            # Load all configured eval datasets dynamically
+            evals = self.hparams.get("evals") or []
+            for eval_cfg in evals:
+                eval_name = eval_cfg["name"]
+                log.info(f"Loading eval dataset: {eval_name}")
+                self.eval_datasets[eval_name] = load_eval_dataset(
+                    tokenizer=HFTokenizer(self.tokenizer),
+                    dataset_name=eval_cfg["dataset_name"],
+                    genome_url=eval_cfg["genome_url"],
+                    filter_name=eval_cfg.get("filter_name", "none"),
+                    dataset_config=eval_cfg.get("dataset_config"),
+                    split=eval_cfg.get("split", "test"),
+                    window_size=eval_cfg.get("window_size", 512),
+                    objective=self.get_objective(),
+                    data_dir=eval_cfg.get("data_dir", "data"),
+                    label_column=eval_cfg.get("label_column", "label"),
                 )
 
     def train_dataloader(self) -> DataLoader:
@@ -369,10 +369,10 @@ class LMDataModule(LightningDataModule):
     def val_dataloader(self) -> DataLoader | list[DataLoader]:
         """Create validation dataloader(s).
 
-        Returns a single dataloader for MLM validation, or a list of dataloaders
-        if TraitGym evaluation is configured: [mlm_val_loader, traitgym_loader].
+        Returns a single dataloader for LM validation, or a list of dataloaders
+        if eval datasets are configured: [lm_val_loader, eval_loader_1, eval_loader_2, ...].
         """
-        mlm_val_loader = DataLoader(
+        lm_val_loader = DataLoader(
             dataset=self.data_val,
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
@@ -381,23 +381,28 @@ class LMDataModule(LightningDataModule):
             collate_fn=default_collate,
         )
 
-        if self.data_val_traitgym_mendelian_promoter is not None:
-            # Get batch size from config, default to 128
-            evals = self.hparams.get("evals") or {}
-            traitgym_cfg = evals.get("traitgym_mendelian_promoter", {})
-            traitgym_batch_size = traitgym_cfg.get("batch_size", 128)
+        if not self.eval_datasets:
+            return lm_val_loader
 
-            traitgym_loader = DataLoader(
-                dataset=self.data_val_traitgym_mendelian_promoter,
-                batch_size=traitgym_batch_size,
-                num_workers=self.hparams.num_workers,
-                pin_memory=self.hparams.pin_memory,
-                shuffle=False,
-                collate_fn=default_collate,
+        # Create dataloaders for all eval datasets
+        eval_loaders = [lm_val_loader]
+        evals = self.hparams.get("evals") or []
+        eval_dict = {e["name"]: e for e in evals}
+
+        for eval_name, eval_dataset in self.eval_datasets.items():
+            eval_cfg = eval_dict[eval_name]
+            eval_loaders.append(
+                DataLoader(
+                    dataset=eval_dataset,
+                    batch_size=eval_cfg.get("batch_size", 128),
+                    num_workers=self.hparams.num_workers,
+                    pin_memory=self.hparams.pin_memory,
+                    shuffle=False,
+                    collate_fn=default_collate,
+                )
             )
-            return [mlm_val_loader, traitgym_loader]
 
-        return mlm_val_loader
+        return eval_loaders
 
 
 class MLMDataModule(LMDataModule):

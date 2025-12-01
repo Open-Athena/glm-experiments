@@ -65,10 +65,11 @@ class LMLitModule(LightningModule):
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.LRScheduler,
         soft_masked_weight: float = 0.01,
+        evals: dict[str, dict] | None = None,
     ):
         super().__init__()
 
-        self.save_hyperparameters(logger=False)
+        self.save_hyperparameters(logger=False, ignore=["net"])
 
         self.net = net
         self.soft_masked_weight = soft_masked_weight
@@ -77,9 +78,45 @@ class LMLitModule(LightningModule):
         self.adapter = self.create_adapter(net)
         self.loss_name = self.get_loss_name()
 
-        # CatMetrics for TraitGym Mendelian Promoter VEP evaluation
-        self.traitgym_mendelian_promoter_labels = CatMetric()
-        self.traitgym_mendelian_promoter_scores = CatMetric()
+        # Initialize dynamic eval metrics from config
+        self._eval_names: list[str] = []
+        self._eval_metrics: dict[str, dict] = {}
+
+        if evals:
+            self._setup_eval_metrics(evals)
+
+    def _setup_eval_metrics(self, evals: list[dict]) -> None:
+        """Initialize eval metrics from configuration.
+
+        Args:
+            evals: List of eval configurations (each with 'name' field)
+        """
+        from glm_experiments.utils.metrics import get_metric, get_transform
+
+        # Store eval names in list order (guaranteed consistent)
+        self._eval_names = [e["name"] for e in evals]
+
+        # Create CatMetrics and config for each eval
+        for eval_config in evals:
+            eval_name = eval_config["name"]
+
+            # Validate transform exists
+            transform_name = eval_config.get("transform", "identity")
+            get_transform(transform_name)  # Raises ValueError if invalid
+
+            # Validate metrics exist
+            metrics = eval_config.get("metrics", ["auprc"])
+            for metric_name in metrics:
+                get_metric(metric_name)  # Raises ValueError if invalid
+
+            # Store config with CatMetrics
+            self._eval_metrics[eval_name] = {
+                "scores": CatMetric(),
+                "labels": CatMetric(),
+                "transform": transform_name,
+                "metrics": metrics,
+                "label_column": eval_config.get("label_column", "label"),
+            }
 
     def create_adapter(self, net: nn.Module) -> nn.Module:
         """Create biofoundation adapter (override in subclasses).
@@ -99,17 +136,6 @@ class LMLitModule(LightningModule):
             Loss metric name (e.g., "mlm_loss" or "clm_loss")
         """
         raise NotImplementedError("Subclasses must implement get_loss_name")
-
-    def compute_vep_scores(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Compute variant effect prediction scores (override in subclasses).
-
-        Args:
-            batch: Batch dict from TraitGym dataset (fields vary by objective)
-
-        Returns:
-            Pathogenicity scores (higher = more pathogenic)
-        """
-        raise NotImplementedError("Subclasses must implement compute_vep_scores")
 
     def forward(self, input_ids: torch.Tensor, labels: torch.Tensor, soft_masked: torch.Tensor):
         """Forward pass through model."""
@@ -160,12 +186,12 @@ class LMLitModule(LightningModule):
     def validation_step(
         self, batch: dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
     ) -> None:
-        """Validation step for LM and TraitGym Mendelian Promoter dataloaders.
+        """Validation step for LM and eval dataloaders.
 
         Args:
             batch: Batch dict (keys depend on dataloader)
             batch_idx: Batch index
-            dataloader_idx: 0 for LM validation, 1 for TraitGym Mendelian Promoter
+            dataloader_idx: 0 for LM validation, 1+ for eval datasets
         """
         if dataloader_idx == 0:
             # LM validation
@@ -197,29 +223,87 @@ class LMLitModule(LightningModule):
                 add_dataloader_idx=False,
                 sync_dist=True,
             )
-        elif dataloader_idx == 1:
-            # TraitGym Mendelian Promoter VEP evaluation
-            # Data comes as PyTorch tensors from HuggingFace dataset with set_format("torch")
-            # Use objective-specific scoring function (override in subclasses)
-            scores = self.compute_vep_scores(batch)
-            self.traitgym_mendelian_promoter_scores.update(scores)
-            self.traitgym_mendelian_promoter_labels.update(batch["label"])
+        else:
+            # Dynamic eval dataset handling
+            # dataloader_idx 1+ map to eval datasets in config order
+            eval_idx = dataloader_idx - 1
+
+            if eval_idx >= len(self._eval_names):
+                raise IndexError(
+                    f"dataloader_idx={dataloader_idx} exceeds configured evals. "
+                    f"Expected indices 0-{len(self._eval_names)} for {len(self._eval_names)} eval(s)."
+                )
+
+            eval_name = self._eval_names[eval_idx]
+            eval_config = self._eval_metrics[eval_name]
+
+            # Compute raw LLR scores using objective-specific method
+            raw_scores = self._compute_raw_llr(batch)
+
+            # Apply transform
+            from glm_experiments.utils.metrics import get_transform
+
+            transform_fn = get_transform(eval_config["transform"])
+            transformed_scores = transform_fn(raw_scores)
+
+            # Update CatMetrics
+            label_col = eval_config["label_column"]
+            eval_config["scores"].update(transformed_scores)
+            eval_config["labels"].update(batch[label_col])
+
+    def _compute_raw_llr(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Compute raw LLR scores without transformation.
+
+        This is the inverse of the old compute_vep_scores() - it returns raw LLR
+        without the hardcoded negation.
+
+        Args:
+            batch: Batch dict from eval dataset (fields vary by objective)
+
+        Returns:
+            Raw LLR scores (higher = more likely under model)
+        """
+        raise NotImplementedError("Subclasses must implement _compute_raw_llr")
 
     def on_validation_epoch_end(self) -> None:
-        """Compute and log TraitGym Mendelian Promoter AUPRC at end of validation epoch."""
-        # Only compute if we have TraitGym Mendelian Promoter data
-        if self.traitgym_mendelian_promoter_scores.update_count > 0:
-            scores = self.traitgym_mendelian_promoter_scores.compute().cpu().numpy()
-            labels = self.traitgym_mendelian_promoter_labels.compute().cpu().numpy()
+        """Compute and log metrics for all eval datasets."""
+        from glm_experiments.utils.metrics import get_metric
 
-            auprc = average_precision_score(labels, scores)
+        for eval_name, eval_config in self._eval_metrics.items():
+            # Skip if no data collected
+            if eval_config["scores"].update_count == 0:
+                continue
+
+            # Compute accumulated scores and labels
+            scores = eval_config["scores"].compute().cpu().numpy()
+            labels = eval_config["labels"].compute().cpu().numpy()
             sample_size = len(labels)
-            log.info(f"TraitGym Mendelian Promoter: sample_size={sample_size}, AUPRC={auprc:.4f}")
-            self.log("val/traitgym_mendelian_promoter_auprc", auprc, prog_bar=True)
+
+            # Compute and log each metric
+            for metric_name in eval_config["metrics"]:
+                metric_fn = get_metric(metric_name)
+                try:
+                    metric_value = metric_fn(labels, scores)
+
+                    # Log to wandb/logger
+                    log_key = f"val/{eval_name}_{metric_name}"
+                    self.log(
+                        log_key,
+                        metric_value,
+                        prog_bar=(metric_name == eval_config["metrics"][0]),
+                    )
+
+                    # Log to console
+                    log.info(
+                        f"{eval_name}: sample_size={sample_size}, "
+                        f"{metric_name.upper()}={metric_value:.4f}"
+                    )
+                except Exception as e:
+                    log.error(f"Failed to compute {metric_name} for {eval_name}: {e}")
 
             # Reset metrics for next epoch
-            self.traitgym_mendelian_promoter_scores.reset()
-            self.traitgym_mendelian_promoter_labels.reset()
+            eval_config["scores"].reset()
+            eval_config["labels"].reset()
 
     def configure_optimizers(self) -> dict[str, Any]:
         """Configure optimizer and scheduler."""
@@ -257,27 +341,22 @@ class MLMLitModule(LMLitModule):
         """Return MLM loss metric name."""
         return "mlm_loss"
 
-    def compute_vep_scores(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Compute MLM variant effect prediction scores.
-
-        Uses biofoundation's compute_llr_mlm function.
+    def _compute_raw_llr(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Compute raw MLM LLR scores (no transformation).
 
         Args:
             batch: Batch with keys {input_ids, pos, ref, alt, label}
 
         Returns:
-            Pathogenicity scores (higher = more pathogenic)
+            Raw LLR scores (higher = more likely under model)
         """
-        # Compute LLR using biofoundation's MLM scorer
-        llr = compute_llr_mlm(
+        return compute_llr_mlm(
             model=self.adapter,
             input_ids=batch["input_ids"],
             pos=batch["pos"],
             ref=batch["ref"],
             alt=batch["alt"],
         )
-        # Negate LLR for pathogenicity score (higher LLR = more likely, but we want score for pathogenic)
-        return -1 * llr
 
 
 class CLMLitModule(LMLitModule):
@@ -297,22 +376,16 @@ class CLMLitModule(LMLitModule):
         """Return CLM loss metric name."""
         return "clm_loss"
 
-    def compute_vep_scores(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Compute CLM variant effect prediction scores.
-
-        Uses biofoundation's compute_llr_clm function.
+    def _compute_raw_llr(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Compute raw CLM LLR scores (no transformation).
 
         Args:
             batch: Batch with keys {input_ids, label} where input_ids is shape [B, 2, L]
 
         Returns:
-            Pathogenicity scores (higher = more pathogenic)
+            Raw LLR scores (higher = more likely under model)
         """
-        # Compute LLR using biofoundation's CLM scorer
-        # For CLM, input_ids has shape [B, 2, L] where the 2 sequences are [ref, alt]
-        llr = compute_llr_clm(
+        return compute_llr_clm(
             model=self.adapter,
             input_ids=batch["input_ids"],
         )
-        # Negate LLR for pathogenicity score (higher LLR = more likely, but we want score for pathogenic)
-        return -1 * llr

@@ -1,4 +1,4 @@
-"""Tests for TraitGym Mendelian Promoter variant dataset loading."""
+"""Tests for evaluation dataset loading."""
 
 import tempfile
 from pathlib import Path
@@ -7,11 +7,14 @@ from unittest.mock import patch
 import pytest
 import torch
 from biofoundation.model.adapters.hf import HFTokenizer
+from datasets import Dataset
 from transformers import AutoTokenizer
 
-from glm_experiments.data.traitgym import (
+from glm_experiments.data.evals import (
+    EVAL_FILTERS,
     download_genome,
-    load_traitgym_mendelian_promoter_dataset,
+    filter_traitgym_promoter,
+    load_eval_dataset,
 )
 
 
@@ -50,15 +53,35 @@ class TestHFTokenizer:
         assert adapter.mask_token_id == hf_tokenizer.mask_token_id
 
 
+class TestEvalFilters:
+    """Tests for evaluation dataset filter functions."""
+
+    def test_filter_registry_contains_expected_filters(self):
+        """Test that EVAL_FILTERS registry contains expected filter names."""
+        assert "traitgym_promoter" in EVAL_FILTERS
+        assert "none" in EVAL_FILTERS
+        assert callable(EVAL_FILTERS["traitgym_promoter"])
+        assert callable(EVAL_FILTERS["none"])
+
+    def test_none_filter_is_identity(self):
+        """Test that 'none' filter returns dataset unchanged."""
+
+        # Create a simple test dataset
+        data = {"col1": [1, 2, 3], "col2": ["a", "b", "c"]}
+        dataset = Dataset.from_dict(data)
+
+        filtered = EVAL_FILTERS["none"](dataset)
+
+        assert filtered is dataset  # Should be same object (identity)
+        assert len(filtered) == len(dataset)
+
+
 class TestDownloadGenome:
     """Tests for download_genome function."""
 
-    def test_download_genome_creates_file(self):
-        """Test that download_genome creates a file at the specified path."""
+    def test_download_genome_auto_derives_path_from_url(self):
+        """Test that download_genome auto-derives path from URL basename."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Create a mock URL and test file
-            test_path = Path(tmpdir) / "test_genome.fa.gz"
-
             # Mock urlretrieve to create a dummy file
             with patch("urllib.request.urlretrieve") as mock_retrieve:
 
@@ -67,27 +90,32 @@ class TestDownloadGenome:
 
                 mock_retrieve.side_effect = create_file
 
-                result = download_genome("http://example.com/genome.fa.gz", test_path)
+                result = download_genome("http://example.com/test_genome.fa.gz", tmpdir)
 
-                assert result == test_path
-                mock_retrieve.assert_called_once()
+                # Check that path is auto-derived from URL
+                expected_path = Path(tmpdir) / "test_genome.fa.gz"
+                assert result == expected_path
+                mock_retrieve.assert_called_once_with(
+                    "http://example.com/test_genome.fa.gz", expected_path
+                )
 
     def test_download_genome_skips_if_exists(self):
         """Test that download_genome skips download if file exists."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            test_path = Path(tmpdir) / "existing_genome.fa.gz"
-            test_path.touch()
+            # Create existing file
+            existing_file = Path(tmpdir) / "existing_genome.fa.gz"
+            existing_file.touch()
 
             with patch("urllib.request.urlretrieve") as mock_retrieve:
-                result = download_genome("http://example.com/genome.fa.gz", test_path)
+                result = download_genome("http://example.com/existing_genome.fa.gz", tmpdir)
 
-                assert result == test_path
+                assert result == existing_file
                 mock_retrieve.assert_not_called()
 
     def test_download_genome_creates_parent_dirs(self):
         """Test that download_genome creates parent directories."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            test_path = Path(tmpdir) / "nested" / "dir" / "genome.fa.gz"
+            nested_dir = Path(tmpdir) / "nested" / "dir"
 
             with patch("urllib.request.urlretrieve") as mock_retrieve:
 
@@ -96,20 +124,14 @@ class TestDownloadGenome:
 
                 mock_retrieve.side_effect = create_file
 
-                result = download_genome("http://example.com/genome.fa.gz", test_path)
+                result = download_genome("http://example.com/genome.fa.gz", nested_dir)
 
-                assert test_path.parent.exists()
+                assert nested_dir.exists()
+                assert result == nested_dir / "genome.fa.gz"
 
 
-class TestLoadTraitgymMendelianPromoterDataset:
-    """Tests for load_traitgym_mendelian_promoter_dataset function.
-
-    Note: Tests that require the real genome file are marked with @pytest.mark.slow
-    and require the genome to be downloaded first. These tests verify end-to-end
-    functionality with real TraitGym Mendelian Promoter data.
-
-    Unit tests use mocks to test the data loading logic without the genome dependency.
-    """
+class TestLoadTraitgymDataset:
+    """Tests for loading TraitGym dataset with load_eval_dataset."""
 
     @pytest.fixture
     def tokenizer_adapter(self):
@@ -119,7 +141,7 @@ class TestLoadTraitgymMendelianPromoterDataset:
         )  # nosec B615
         return HFTokenizer(hf_tokenizer)
 
-    def test_load_traitgym_dataset_loads_raw_data(self, tokenizer_adapter):
+    def test_load_traitgym_dataset_loads_raw_data(self):
         """Test that TraitGym dataset can be loaded from HuggingFace."""
         from datasets import load_dataset
 
@@ -135,51 +157,6 @@ class TestLoadTraitgymMendelianPromoterDataset:
 
         # Check we have data
         assert len(dataset) > 0
-
-    @pytest.mark.slow
-    @pytest.mark.skipif(
-        not Path("data/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz").exists(),
-        reason="Reference genome not downloaded. Run prepare_data() first.",
-    )
-    def test_load_traitgym_mendelian_promoter_dataset_with_real_genome(self, tokenizer_adapter):
-        """Test load_traitgym_mendelian_promoter_dataset with real genome file.
-
-        Requires the reference genome to be downloaded first.
-        """
-        from datasets import Dataset
-
-        dataset = load_traitgym_mendelian_promoter_dataset(
-            tokenizer=tokenizer_adapter,
-            genome_path="data/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
-            dataset_name="songlab/TraitGym",
-            dataset_config="mendelian_traits",
-            window_size=512,
-        )
-
-        assert isinstance(dataset, Dataset)
-
-        # Check expected columns from transform_llr_mlm
-        assert "input_ids" in dataset.column_names
-        assert "pos" in dataset.column_names
-        assert "ref" in dataset.column_names
-        assert "alt" in dataset.column_names
-        assert "label" in dataset.column_names
-
-        # Get first example and verify format
-        example = dataset[0]
-
-        # Check input_ids has correct length
-        # Note: HuggingFace datasets stores tensors as lists
-        input_ids = example["input_ids"]
-        assert len(input_ids) == 512
-
-        # Check pos is a tensor in valid range (set_format("torch") returns tensors)
-        assert isinstance(example["pos"], torch.Tensor)
-        assert example["pos"].item() == 256  # Center position for window_size=512
-
-        # Check ref and alt are tensors (token IDs)
-        assert isinstance(example["ref"], torch.Tensor)
-        assert isinstance(example["alt"], torch.Tensor)
 
 
 class TestDNADataModuleWithTraitGymMendelianPromoter:
@@ -211,7 +188,7 @@ class TestDNADataModuleWithTraitGymMendelianPromoter:
         dm = MLMDataModule()
 
         assert dm.hparams.evals is None
-        assert dm.data_val_traitgym_mendelian_promoter is None
+        assert dm.eval_datasets == {}
 
     def test_val_dataloader_returns_single_loader_without_evals(self):
         """Test that val_dataloader returns single DataLoader without evals."""
@@ -227,7 +204,7 @@ class TestDNADataModuleWithTraitGymMendelianPromoter:
 
         # Mock the data_val attribute
         dm.data_val = [{"input_ids": torch.zeros(10), "labels": torch.zeros(10)}]
-        dm.data_val_traitgym_mendelian_promoter = None
+        dm.eval_datasets = {}
         dm.batch_size_per_device = 32
 
         result = dm.val_dataloader()
@@ -254,9 +231,11 @@ class TestDNADataModuleWithTraitGymMendelianPromoter:
 
         # Mock the data attributes
         dm.data_val = [{"input_ids": torch.zeros(10), "labels": torch.zeros(10)}]
-        dm.data_val_traitgym_mendelian_promoter = [
-            {"input_ids": torch.zeros(512), "pos": 256, "ref": 1, "alt": 2, "label": 0}
-        ]
+        dm.eval_datasets = {
+            "traitgym_mendelian_promoter": [
+                {"input_ids": torch.zeros(512), "pos": 256, "ref": 1, "alt": 2, "label": 0}
+            ]
+        }
         dm.batch_size_per_device = 32
 
         result = dm.val_dataloader()

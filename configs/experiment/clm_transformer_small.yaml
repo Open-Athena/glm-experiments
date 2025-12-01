@@ -3,6 +3,7 @@
 # Short training run with small Transformer encoder for quick testing
 
 defaults:
+  - override /data: plants
   - override /model: clm_transformer_small
 
 logger:

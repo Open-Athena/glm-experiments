@@ -1,6 +1,7 @@
 _target_: glm_experiments.models.lm_lit_module.CLMLitModule
 
 soft_masked_weight: ${data.soft_masked_weight}
+evals: ${data.evals}
 
 net:
   _target_: glm_experiments.models.components.lm.CLM
