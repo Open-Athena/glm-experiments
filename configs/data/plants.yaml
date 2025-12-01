@@ -2,7 +2,7 @@ defaults:
   - default
 
 # Training dataset: Angiosperm 16 genomes
-dataset_name: kuleshov-group/Angiosperm_16_genomes
+dataset_name: data/gonzalobenegas/Angiosperm_16_genomes_sharded
 
 # Batch size configuration
 batch_size: 2048 # Total effective batch size
