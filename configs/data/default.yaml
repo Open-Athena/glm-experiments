@@ -29,6 +29,15 @@ evals:
     dataset_name: songlab/TraitGym
     dataset_config: mendelian_traits
     genome_url: https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz
-    genome_path: data/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz
+    filter_name: traitgym_promoter
     window_size: 512
     batch_size: 128
+
+  # Example: PlantCAD maize allele frequency dataset
+  # maize_af:
+  #   dataset_name: plantcad/maize-allele-frequency
+  #   dataset_config: null
+  #   genome_url: https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-62/fasta/zea_mays/dna/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna_sm.toplevel.fa.gz
+  #   filter_name: none
+  #   window_size: 512
+  #   batch_size: 128
