@@ -393,13 +393,10 @@ class LMDataModule(LightningDataModule):
         evals = self.hparams.get("evals") or {}
 
         for eval_name, eval_dataset in self.eval_datasets.items():
-            eval_cfg = evals[eval_name]
-            batch_size = eval_cfg.get("batch_size", 128)
-
             eval_loaders.append(
                 DataLoader(
                     dataset=eval_dataset,
-                    batch_size=batch_size,
+                    batch_size=self.batch_size_per_device,
                     num_workers=self.hparams.num_workers,
                     pin_memory=self.hparams.pin_memory,
                     shuffle=False,
