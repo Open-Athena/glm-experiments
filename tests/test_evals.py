@@ -15,7 +15,6 @@ from glm_experiments.data.evals import (
     download_genome,
     filter_traitgym_promoter,
     load_eval_dataset,
-    load_traitgym_mendelian_promoter_dataset,
 )
 
 
@@ -131,15 +130,8 @@ class TestDownloadGenome:
                 assert result == nested_dir / "genome.fa.gz"
 
 
-class TestLoadTraitgymMendelianPromoterDataset:
-    """Tests for load_traitgym_mendelian_promoter_dataset function.
-
-    Note: Tests that require the real genome file are marked with @pytest.mark.slow
-    and require the genome to be downloaded first. These tests verify end-to-end
-    functionality with real TraitGym Mendelian Promoter data.
-
-    Unit tests use mocks to test the data loading logic without the genome dependency.
-    """
+class TestLoadTraitgymDataset:
+    """Tests for loading TraitGym dataset with load_eval_dataset."""
 
     @pytest.fixture
     def tokenizer_adapter(self):
@@ -149,7 +141,7 @@ class TestLoadTraitgymMendelianPromoterDataset:
         )  # nosec B615
         return HFTokenizer(hf_tokenizer)
 
-    def test_load_traitgym_dataset_loads_raw_data(self, tokenizer_adapter):
+    def test_load_traitgym_dataset_loads_raw_data(self):
         """Test that TraitGym dataset can be loaded from HuggingFace."""
         from datasets import load_dataset
 
@@ -165,51 +157,6 @@ class TestLoadTraitgymMendelianPromoterDataset:
 
         # Check we have data
         assert len(dataset) > 0
-
-    @pytest.mark.slow
-    @pytest.mark.skipif(
-        not Path("data/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz").exists(),
-        reason="Reference genome not downloaded. Run prepare_data() first.",
-    )
-    def test_load_traitgym_mendelian_promoter_dataset_with_real_genome(self, tokenizer_adapter):
-        """Test load_traitgym_mendelian_promoter_dataset with real genome file.
-
-        Requires the reference genome to be downloaded first.
-        """
-        from datasets import Dataset
-
-        dataset = load_traitgym_mendelian_promoter_dataset(
-            tokenizer=tokenizer_adapter,
-            genome_path="data/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
-            dataset_name="songlab/TraitGym",
-            dataset_config="mendelian_traits",
-            window_size=512,
-        )
-
-        assert isinstance(dataset, Dataset)
-
-        # Check expected columns from transform_llr_mlm
-        assert "input_ids" in dataset.column_names
-        assert "pos" in dataset.column_names
-        assert "ref" in dataset.column_names
-        assert "alt" in dataset.column_names
-        assert "label" in dataset.column_names
-
-        # Get first example and verify format
-        example = dataset[0]
-
-        # Check input_ids has correct length
-        # Note: HuggingFace datasets stores tensors as lists
-        input_ids = example["input_ids"]
-        assert len(input_ids) == 512
-
-        # Check pos is a tensor in valid range (set_format("torch") returns tensors)
-        assert isinstance(example["pos"], torch.Tensor)
-        assert example["pos"].item() == 256  # Center position for window_size=512
-
-        # Check ref and alt are tensors (token IDs)
-        assert isinstance(example["ref"], torch.Tensor)
-        assert isinstance(example["alt"], torch.Tensor)
 
 
 class TestDNADataModuleWithTraitGymMendelianPromoter:

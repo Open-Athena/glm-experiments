@@ -77,6 +77,7 @@ def load_eval_dataset(
     genome_url: str,
     filter_name: str = "none",
     dataset_config: str | None = None,
+    split: str = "test",
     window_size: int = 512,
     cache_dir: str | Path = "data/evals_cache",
     objective: str = "mlm",
@@ -96,6 +97,7 @@ def load_eval_dataset(
         genome_url: URL to reference genome (path auto-derived from basename)
         filter_name: Name of filter function in EVAL_FILTERS registry (default: "none")
         dataset_config: Dataset configuration (e.g., "mendelian_traits")
+        split: Dataset split to load (default: "test")
         window_size: Size of the window around variants (must be even)
         cache_dir: Directory to cache transformed dataset
         objective: Training objective ("mlm" or "clm") - determines transform function
@@ -116,11 +118,11 @@ def load_eval_dataset(
             f"Unknown filter_name: {filter_name}. " f"Must be one of {list(EVAL_FILTERS.keys())}"
         )
 
-    # Create cache path based on config, filter, and objective
+    # Create cache path based on config, filter, split, and objective
     cache_name_parts = [dataset_name.replace("/", "_")]
     if dataset_config:
         cache_name_parts.append(dataset_config)
-    cache_name_parts.extend([filter_name, f"window{window_size}", objective])
+    cache_name_parts.extend([split, filter_name, f"window{window_size}", objective])
     cache_name = "_".join(cache_name_parts)
     cache_path = Path(cache_dir) / cache_name
 
@@ -135,7 +137,8 @@ def load_eval_dataset(
     log.info(f"Loading evaluation dataset: {dataset_name}")
     if dataset_config:
         log.info(f"  Dataset config: {dataset_config}")
-    dataset = load_dataset(dataset_name, dataset_config, split="test")  # nosec B615
+    log.info(f"  Split: {split}")
+    dataset = load_dataset(dataset_name, dataset_config, split=split)  # nosec B615
 
     # Apply dataset-specific filtering
     if filter_name != "none":
@@ -181,65 +184,3 @@ def load_eval_dataset(
     dataset.set_format(type="torch")
 
     return dataset
-
-
-def load_traitgym_mendelian_promoter_dataset(
-    tokenizer: Tokenizer,
-    genome_path: str | Path,
-    dataset_name: str = "songlab/TraitGym",
-    dataset_config: str = "mendelian_traits",
-    window_size: int = 512,
-    cache_dir: str | Path = "data/traitgym_cache",
-    objective: str = "mlm",
-) -> Dataset:
-    """Load TraitGym Mendelian Promoter dataset for variant effect prediction.
-
-    DEPRECATED: Use load_eval_dataset() with filter_name="traitgym_promoter" instead.
-
-    This function is kept for backward compatibility with existing code.
-
-    Args:
-        tokenizer: Tokenizer implementing the biofoundation Tokenizer protocol
-        genome_path: Path to the reference genome file
-        dataset_name: HuggingFace dataset name
-        dataset_config: Dataset configuration (e.g., "mendelian_traits")
-        window_size: Size of the window around variants (must be even)
-        cache_dir: Directory to cache transformed dataset
-        objective: Training objective (training objective ("mlm" or "clm")
-
-    Returns:
-        Transformed dataset with columns: input_ids, pos, ref, alt, label
-    """
-    import warnings
-
-    warnings.warn(
-        "load_traitgym_mendelian_promoter_dataset is deprecated. "
-        "Use load_eval_dataset() with filter_name='traitgym_promoter' instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
-    # For backward compatibility, we need to handle the case where the genome
-    # is already downloaded at genome_path. We'll construct a fake file:// URL
-    # and ensure the genome file is in the expected location.
-    genome_path = Path(genome_path)
-
-    if not genome_path.exists():
-        raise FileNotFoundError(
-            f"Genome file not found at {genome_path}. "
-            "Please download it first or use load_eval_dataset() with genome_url."
-        )
-
-    # Use load_eval_dataset with the new API
-    # We'll pass data_dir as the parent of genome_path to ensure it's found
-    return load_eval_dataset(
-        tokenizer=tokenizer,
-        dataset_name=dataset_name,
-        genome_url=f"file:///{genome_path.name}",  # Fake URL with just filename
-        filter_name="traitgym_promoter",
-        dataset_config=dataset_config,
-        window_size=window_size,
-        cache_dir=cache_dir,
-        objective=objective,
-        data_dir=genome_path.parent,  # Ensure download_genome finds existing file
-    )

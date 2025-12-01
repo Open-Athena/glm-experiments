@@ -12,13 +12,7 @@ from lightning import LightningDataModule
 from torch.utils.data import DataLoader, default_collate
 from transformers import AutoTokenizer
 
-from glm_experiments.data.evals import (
-    load_traitgym_mendelian_promoter_dataset,  # Backward compatibility
-)
-from glm_experiments.data.evals import (
-    download_genome,
-    load_eval_dataset,
-)
+from glm_experiments.data.evals import download_genome, load_eval_dataset
 from glm_experiments.utils.pylogger import RankedLogger
 
 log = RankedLogger(__name__, rank_zero_only=True)
@@ -353,6 +347,7 @@ class LMDataModule(LightningDataModule):
                     genome_url=eval_cfg["genome_url"],
                     filter_name=eval_cfg.get("filter_name", "none"),
                     dataset_config=eval_cfg.get("dataset_config"),
+                    split=eval_cfg.get("split", "test"),
                     window_size=eval_cfg.get("window_size", 512),
                     objective=self.get_objective(),
                     data_dir=eval_cfg.get("data_dir", "data"),
@@ -393,10 +388,11 @@ class LMDataModule(LightningDataModule):
         evals = self.hparams.get("evals") or {}
 
         for eval_name, eval_dataset in self.eval_datasets.items():
+            eval_cfg = evals[eval_name]
             eval_loaders.append(
                 DataLoader(
                     dataset=eval_dataset,
-                    batch_size=self.batch_size_per_device,
+                    batch_size=eval_cfg.get("batch_size", 128),
                     num_workers=self.hparams.num_workers,
                     pin_memory=self.hparams.pin_memory,
                     shuffle=False,
