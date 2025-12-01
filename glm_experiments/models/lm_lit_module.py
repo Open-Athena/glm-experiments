@@ -85,19 +85,21 @@ class LMLitModule(LightningModule):
         if evals:
             self._setup_eval_metrics(evals)
 
-    def _setup_eval_metrics(self, evals: dict[str, dict]) -> None:
+    def _setup_eval_metrics(self, evals: list[dict]) -> None:
         """Initialize eval metrics from configuration.
 
         Args:
-            evals: Dictionary of eval configurations from DataModule
+            evals: List of eval configurations (each with 'name' field)
         """
         from glm_experiments.utils.metrics import get_metric, get_transform
 
-        # Store eval names in iteration order (matches dataloader order)
-        self._eval_names = list(evals.keys())
+        # Store eval names in list order (guaranteed consistent)
+        self._eval_names = [e["name"] for e in evals]
 
         # Create CatMetrics and config for each eval
-        for eval_name, eval_config in evals.items():
+        for eval_config in evals:
+            eval_name = eval_config["name"]
+
             # Validate transform exists
             transform_name = eval_config.get("transform", "identity")
             get_transform(transform_name)  # Raises ValueError if invalid

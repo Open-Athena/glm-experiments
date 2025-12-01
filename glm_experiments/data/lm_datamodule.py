@@ -153,7 +153,7 @@ class LMDataModule(LightningDataModule):
         self.data_train = None
         self.data_val = None
         # Dynamic eval datasets (keyed by eval_name from config)
-        self.eval_datasets: dict[str, any] = {}
+        self.eval_datasets: dict[str, Any] = {}
 
     def apply_labels(self, input_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Apply objective-specific label creation (override in subclasses).
@@ -181,8 +181,8 @@ class LMDataModule(LightningDataModule):
         AutoTokenizer.from_pretrained(self.hparams.tokenizer_name)  # nosec B615
 
         # Download genomes for all configured eval datasets
-        evals = self.hparams.get("evals") or {}
-        for eval_name, eval_cfg in evals.items():
+        evals = self.hparams.get("evals") or []
+        for eval_cfg in evals:
             download_genome(
                 url=eval_cfg["genome_url"],
                 data_dir=eval_cfg.get("data_dir", "data"),
@@ -338,8 +338,9 @@ class LMDataModule(LightningDataModule):
             self.data_val = val_dataset
 
             # Load all configured eval datasets dynamically
-            evals = self.hparams.get("evals") or {}
-            for eval_name, eval_cfg in evals.items():
+            evals = self.hparams.get("evals") or []
+            for eval_cfg in evals:
+                eval_name = eval_cfg["name"]
                 log.info(f"Loading eval dataset: {eval_name}")
                 self.eval_datasets[eval_name] = load_eval_dataset(
                     tokenizer=HFTokenizer(self.tokenizer),
@@ -385,10 +386,11 @@ class LMDataModule(LightningDataModule):
 
         # Create dataloaders for all eval datasets
         eval_loaders = [lm_val_loader]
-        evals = self.hparams.get("evals") or {}
+        evals = self.hparams.get("evals") or []
+        eval_dict = {e["name"]: e for e in evals}
 
         for eval_name, eval_dataset in self.eval_datasets.items():
-            eval_cfg = evals[eval_name]
+            eval_cfg = eval_dict[eval_name]
             eval_loaders.append(
                 DataLoader(
                     dataset=eval_dataset,

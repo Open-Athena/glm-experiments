@@ -11,7 +11,7 @@ num_workers: 8
 
 # Evaluation datasets
 evals:
-  maize_af:
+  - name: maize_af
     dataset_name: plantcad/maize-allele-frequency
     dataset_config: null
     split: validation

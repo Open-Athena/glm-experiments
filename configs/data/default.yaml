@@ -26,7 +26,7 @@ seed: 42
 # Set evals: null to disable all evals, or configure specific evals in dataset-specific configs
 # Example structure:
 # evals:
-#   eval_name:
+#   - name: eval_name
 #     dataset_name: songlab/TraitGym
 #     dataset_config: mendelian_traits
 #     split: test # Dataset split to load (default: "test")

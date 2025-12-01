@@ -7,7 +7,7 @@ num_workers: 8
 
 # Evaluation datasets
 evals:
-  traitgym_mendelian_promoter:
+  - name: traitgym_mendelian_promoter
     dataset_name: songlab/TraitGym
     dataset_config: mendelian_traits
     split: test # Dataset split to load (default: "test")

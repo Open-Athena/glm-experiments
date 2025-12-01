@@ -16,7 +16,10 @@ from glm_experiments.models.lm_lit_module import (
 def mlm_lit_module():
     """Create MLMLitModule from config."""
     with initialize(version_base="1.3", config_path="../configs"):
-        cfg = compose(config_name="train", overrides=["model=bert_bytenet_small"])
+        cfg = compose(
+            config_name="train",
+            overrides=["model=bert_bytenet_small", "data=gpn_animal_promoter"],
+        )
 
     import hydra
 
