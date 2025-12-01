@@ -356,6 +356,7 @@ class LMDataModule(LightningDataModule):
                     window_size=eval_cfg.get("window_size", 512),
                     objective=self.get_objective(),
                     data_dir=eval_cfg.get("data_dir", "data"),
+                    label_column=eval_cfg.get("label_column", "label"),
                 )
 
     def train_dataloader(self) -> DataLoader:

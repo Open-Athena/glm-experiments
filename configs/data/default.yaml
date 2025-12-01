@@ -32,6 +32,8 @@ evals:
     filter_name: traitgym_promoter
     window_size: 512
     batch_size: 128
+    label_column: label # Column to preserve as labels (default: "label")
+
 
   # Example: PlantCAD maize allele frequency dataset
   # maize_af:
@@ -41,3 +43,4 @@ evals:
   #   filter_name: none
   #   window_size: 512
   #   batch_size: 128
+  #   label_column: AF

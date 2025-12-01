@@ -81,6 +81,7 @@ def load_eval_dataset(
     cache_dir: str | Path = "data/evals_cache",
     objective: str = "mlm",
     data_dir: str | Path = "data",
+    label_column: str = "label",
 ) -> Dataset:
     """Load and transform evaluation dataset with optional filtering.
 
@@ -99,9 +100,10 @@ def load_eval_dataset(
         cache_dir: Directory to cache transformed dataset
         objective: Training objective ("mlm" or "clm") - determines transform function
         data_dir: Directory for genome downloads (default: "data")
+        label_column: Name of the label column to preserve (default: "label")
 
     Returns:
-        Transformed dataset with columns: input_ids, pos, ref, alt, label
+        Transformed dataset with columns: input_ids, pos, ref, alt, {label_column}
 
     Raises:
         ValueError: If filter_name not in EVAL_FILTERS or objective not mlm/clm
@@ -167,7 +169,7 @@ def load_eval_dataset(
     log.info("Transforming evaluation dataset...")
     dataset = dataset.map(
         transform_fn,
-        remove_columns=[c for c in original_columns if c != "label"],
+        remove_columns=[c for c in original_columns if c != label_column],
     )
 
     # Save to cache
