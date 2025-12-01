@@ -144,6 +144,7 @@ def test_mlm_lit_module_save_hyperparameters():
     assert hasattr(model, "hparams")
     assert "optimizer" in model.hparams
     assert "scheduler" in model.hparams
+    assert "evals" in model.hparams  # New parameter
     # net should NOT be in hparams
     assert "net" not in model.hparams
 
@@ -179,9 +180,11 @@ def test_validation_step_traitgym_mendelian_promoter(mlm_lit_module):
     # Run validation step with dataloader_idx=1 (TraitGym Mendelian Promoter)
     mlm_lit_module.validation_step(batch, batch_idx=0, dataloader_idx=1)
 
-    # Check that metrics were updated
-    assert mlm_lit_module.traitgym_mendelian_promoter_scores.update_count == 1
-    assert mlm_lit_module.traitgym_mendelian_promoter_labels.update_count == 1
+    # Check that metrics were updated using new structure
+    eval_name = "traitgym_mendelian_promoter"
+    assert eval_name in mlm_lit_module._eval_metrics
+    assert mlm_lit_module._eval_metrics[eval_name]["scores"].update_count == 1
+    assert mlm_lit_module._eval_metrics[eval_name]["labels"].update_count == 1
 
 
 def test_on_validation_epoch_end_computes_auprc(mlm_lit_module):
@@ -190,15 +193,16 @@ def test_on_validation_epoch_end_computes_auprc(mlm_lit_module):
     scores = torch.tensor([0.1, 0.4, 0.6, 0.9])
     labels = torch.tensor([0, 0, 1, 1])
 
-    mlm_lit_module.traitgym_mendelian_promoter_scores.update(scores)
-    mlm_lit_module.traitgym_mendelian_promoter_labels.update(labels)
+    eval_name = "traitgym_mendelian_promoter"
+    mlm_lit_module._eval_metrics[eval_name]["scores"].update(scores)
+    mlm_lit_module._eval_metrics[eval_name]["labels"].update(labels)
 
     # Run epoch end
     mlm_lit_module.on_validation_epoch_end()
 
     # Metrics should be reset after computation
-    assert mlm_lit_module.traitgym_mendelian_promoter_scores.update_count == 0
-    assert mlm_lit_module.traitgym_mendelian_promoter_labels.update_count == 0
+    assert mlm_lit_module._eval_metrics[eval_name]["scores"].update_count == 0
+    assert mlm_lit_module._eval_metrics[eval_name]["labels"].update_count == 0
 
 
 def test_validation_step_lm_still_works(mlm_lit_module):

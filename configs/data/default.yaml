@@ -33,6 +33,8 @@ evals:
     window_size: 512
     batch_size: 128
     label_column: label # Column to preserve as labels (default: "label")
+    transform: minus # Transform to apply to raw LLR: minus, identity, abs (default: identity)
+    metrics: [auprc] # Metrics to compute: auprc, auroc, spearman, pearson (default: [auprc])
 
 
   # Example: PlantCAD maize allele frequency dataset
