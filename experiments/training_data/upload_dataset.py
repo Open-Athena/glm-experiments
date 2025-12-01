@@ -23,9 +23,7 @@ from huggingface_hub import HfApi, create_repo
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Upload sharded dataset to HuggingFace Hub"
-    )
+    parser = argparse.ArgumentParser(description="Upload sharded dataset to HuggingFace Hub")
     parser.add_argument(
         "--input-dir",
         type=Path,

@@ -100,7 +100,7 @@ def load_eval_dataset(
         split: Dataset split to load (default: "test")
         window_size: Size of the window around variants (must be even)
         cache_dir: Directory to cache transformed dataset
-        objective: Training objective ("mlm" or "clm") - determines transform function
+        objective: Training objective ("mlm", "dlm", or "clm") - determines transform function
         data_dir: Directory for genome downloads (default: "data")
         label_column: Name of the label column to preserve (default: "label")
 
@@ -108,7 +108,7 @@ def load_eval_dataset(
         Transformed dataset with columns: input_ids, pos, ref, alt, {label_column}
 
     Raises:
-        ValueError: If filter_name not in EVAL_FILTERS or objective not mlm/clm
+        ValueError: If filter_name not in EVAL_FILTERS or objective not mlm/dlm/clm
     """
     from datasets import load_from_disk
 
@@ -154,12 +154,13 @@ def load_eval_dataset(
     original_columns = dataset.column_names
 
     # Select transform function based on objective
-    if objective == "mlm":
+    if objective in ("mlm", "dlm"):
+        # Both MLM and DLM use the same bidirectional masking transform
         transform_func = transform_llr_mlm
     elif objective == "clm":
         transform_func = transform_llr_clm
     else:
-        raise ValueError(f"Unknown objective: {objective}. Must be 'mlm' or 'clm'.")
+        raise ValueError(f"Unknown objective: {objective}. Must be 'mlm', 'dlm', or 'clm'.")
 
     transform_fn = partial(
         transform_func,
