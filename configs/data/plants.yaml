@@ -21,4 +21,4 @@ evals:
     batch_size: 128
     label_column: AF # Allele frequency column
     transform: identity # No transform for regression (default: identity)
-    metrics: [spearman, pearson] # Correlation metrics for regression task
+    metrics: [pearson, spearman] # Correlation metrics for regression task
