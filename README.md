@@ -109,3 +109,10 @@ from glm_experiments.models.lm_lit_module import MLMLitModule
 # Load plain pytorch model from checkpoint
 model = MLMLitModule.load_from_checkpoint("logs/train/runs/<timestamp>/checkpoints/{step}.ckpt").net
 ```
+
+## Upload checkpoints to HF
+
+```bash
+uv run hf auth login
+uv run hf upload-large-folder --repo-type dataset gonzalobenegas/dev-glm-experiments-logs logs
+```
