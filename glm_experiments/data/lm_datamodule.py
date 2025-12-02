@@ -105,6 +105,45 @@ def apply_clm_labels(input_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tenso
     return input_ids, labels
 
 
+def apply_dlm_masking(
+    input_ids: torch.Tensor,
+    mask_token_id: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Apply diffusion masking to input tokens.
+
+    For each sequence, samples a random masking ratio r ~ Uniform(0, 1),
+    then masks each token with probability r. Unlike BERT/MLM, there is
+    no token replacement (100% of selected tokens become [MASK]).
+
+    Args:
+        input_ids: Token IDs of shape (batch_size, seq_len)
+        mask_token_id: Token ID for [MASK]
+
+    Returns:
+        Tuple of (masked_input_ids, labels) both as int8.
+        Labels has -100 for non-masked positions (standard PyTorch ignore_index).
+    """
+    input_ids = input_ids.clone().to(torch.int8)
+    labels = input_ids.clone()
+
+    batch_size, seq_len = input_ids.shape
+
+    # Sample masking ratio r ~ Uniform(0, 1) for each sequence
+    masking_ratios = torch.rand(batch_size, 1)  # Shape: (batch_size, 1)
+
+    # Create probability matrix: each sequence has its own masking ratio
+    probability_matrix = masking_ratios.expand(batch_size, seq_len)  # (batch_size, seq_len)
+
+    # Select tokens for masking based on per-sequence ratio
+    masked_indices = torch.bernoulli(probability_matrix).bool()
+    labels[~masked_indices] = -100  # Standard PyTorch ignore_index
+
+    # Replace ALL masked tokens with [MASK] (no random replacement)
+    input_ids[masked_indices] = mask_token_id
+
+    return input_ids, labels
+
+
 class LMDataModule(LightningDataModule):
     """Base DataModule for DNA language modeling.
 
@@ -439,6 +478,35 @@ class MLMDataModule(LMDataModule):
             mask_token_id=self.tokenizer.mask_token_id,
             vocab_size=self.tokenizer.vocab_size,
             mlm_probability=self.mlm_probability,
+        )
+
+
+class DLMDataModule(LMDataModule):
+    """DataModule for Diffusion Language Modeling.
+
+    Uses per-sequence variable masking ratio r ~ Uniform(0, 1).
+    No token replacement (100% [MASK]).
+
+    Args:
+        **kwargs: Arguments passed to LMDataModule
+    """
+
+    def get_objective(self) -> str:
+        """Return the objective type for DLM."""
+        return "dlm"
+
+    def apply_labels(self, input_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply DLM masking to create labels.
+
+        Args:
+            input_ids: Tokenized input IDs of shape (batch_size, seq_len)
+
+        Returns:
+            Tuple of (masked_input_ids, labels) with -100 for non-masked positions
+        """
+        return apply_dlm_masking(
+            input_ids,
+            mask_token_id=self.tokenizer.mask_token_id,
         )
 
 

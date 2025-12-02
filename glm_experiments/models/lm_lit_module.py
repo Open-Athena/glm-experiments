@@ -359,6 +359,47 @@ class MLMLitModule(LMLitModule):
         )
 
 
+class DLMLitModule(LMLitModule):
+    """Lightning module for Diffusion Language Modeling.
+
+    Uses same adapter and VEP scoring as MLM since both are bidirectional
+    masked models. Only difference is the masking strategy during training
+    (handled by DLMDataModule).
+
+    Args:
+        net: DLM model
+        optimizer: Optimizer partial function
+        scheduler: Scheduler partial function
+    """
+
+    def create_adapter(self, net: nn.Module) -> nn.Module:
+        """Create MaskedLMAdapter for biofoundation scoring."""
+        return MaskedLMAdapter(net)
+
+    def get_loss_name(self) -> str:
+        """Return DLM loss metric name."""
+        return "dlm_loss"
+
+    def _compute_raw_llr(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Compute raw DLM LLR scores (no transformation).
+
+        Uses same MLM scoring since DLM is also a bidirectional masked model.
+
+        Args:
+            batch: Batch with keys {input_ids, pos, ref, alt, label}
+
+        Returns:
+            Raw LLR scores (higher = more likely under model)
+        """
+        return compute_llr_mlm(
+            model=self.adapter,
+            input_ids=batch["input_ids"],
+            pos=batch["pos"],
+            ref=batch["ref"],
+            alt=batch["alt"],
+        )
+
+
 class CLMLitModule(LMLitModule):
     """Lightning module for Causal Language Modeling.
 

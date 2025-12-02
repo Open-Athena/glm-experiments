@@ -145,10 +145,11 @@ class LM(nn.Module):
         return self.compute_loss(logits, labels, soft_masked, soft_masked_weight)
 
 
-class MLM(LM):
-    """Masked language model (bidirectional).
+class GeneralMaskedLM(LM):
+    """Base class for bidirectional masked language models (MLM, DLM).
 
-    Predicts tokens only at masked positions (labels != -100).
+    Subclasses differ only in their masking strategy (applied in data module).
+    Both filter to masked positions (labels != -100) for loss computation.
     """
 
     def prepare_for_loss(
@@ -157,7 +158,9 @@ class MLM(LM):
         labels: torch.Tensor,
         soft_masked: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Filter to masked positions only.
+        """Filter to masked positions only (labels != -100).
+
+        Shared by both MLM and DLM since both use masking-based training.
 
         Args:
             logits: Logits of shape (batch, seq_len, vocab_size)
@@ -179,6 +182,27 @@ class MLM(LM):
         soft_masked = soft_masked[mask]
 
         return logits, labels, soft_masked
+
+
+class MLM(GeneralMaskedLM):
+    """Masked language model with BERT-style masking.
+
+    Uses fixed 15% masking with token replacement (80% [MASK], 10% random, 10% unchanged).
+    Masking logic is implemented in MLMDataModule.apply_labels().
+    """
+
+    pass  # All logic inherited from GeneralMaskedLM
+
+
+class DLM(GeneralMaskedLM):
+    """Diffusion language model with variable masking ratio.
+
+    Uses per-sequence random masking ratio r ~ Uniform(0, 1).
+    No token replacement (100% [MASK]).
+    Masking logic is implemented in DLMDataModule.apply_labels().
+    """
+
+    pass  # All logic inherited from GeneralMaskedLM
 
 
 class CLM(LM):

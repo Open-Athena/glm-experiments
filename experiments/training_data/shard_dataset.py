@@ -21,17 +21,17 @@ Usage:
 import argparse
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm
-import numpy as np
 
 
 def download_split(repo_id: str, split: str, cache_dir: Path) -> Path:
     """Download a single split from HuggingFace."""
     filename = f"data/{split}/{split}.jsonl.zst"
     return Path(
-        hf_hub_download(
+        hf_hub_download(  # nosec B615
             repo_id=repo_id,
             filename=filename,
             repo_type="dataset",
