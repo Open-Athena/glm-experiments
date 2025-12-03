@@ -3,7 +3,6 @@
 # Short training run with small Transformer encoder for quick testing
 
 defaults:
-  - override /data: plants
   - override /model: clm_transformer_small
 
 logger:
@@ -24,6 +23,13 @@ model:
       d_model: 32
     encoder:
       n_layers: 2
+      num_heads: 2
+      sliding_window:
+        _target_: glm_experiments.models.utils.attention_patterns.alternating_global_local
+        n_layers: ${..n_layers}
+        window_size: 32
+        start_with_global: true
+
   scheduler:
     _target_: transformers.get_cosine_schedule_with_warmup
     _partial_: true

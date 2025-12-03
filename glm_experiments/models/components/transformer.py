@@ -22,6 +22,8 @@ from einops import einsum, rearrange
 from jaxtyping import Float, Int
 from torch import Tensor
 
+from glm_experiments.models.components.attention import scaled_dot_product_attention
+
 
 class Linear(nn.Module):
     def __init__(self, d_in: int, d_out: int):
@@ -124,7 +126,7 @@ class SwiGLU(nn.Module):
 
 
 class MultiHeadSelfAttention(nn.Module):
-    """Multi-Head Self-Attention with configurable causal masking.
+    """Multi-Head Self-Attention with configurable causal masking and sliding window.
 
     This function implements section 3.2.2 of the Transformer paper. In particular,
     given an input tensor of shape `(batch_size, sequence_length, d_model)`, we project
@@ -141,6 +143,9 @@ class MultiHeadSelfAttention(nn.Module):
             The RoPE module to use.
         is_causal: bool
             Whether to use causal masking (default: False for bidirectional attention).
+        sliding_window: int | None
+            Window size for sliding window attention. If None, uses standard attention
+            (default: None).
 
     Returns:
         Tensor of shape `(batch_size, sequence_length, d_model)`.
@@ -152,12 +157,14 @@ class MultiHeadSelfAttention(nn.Module):
         num_heads: int,
         positional_encoder: RotaryEmbedding,
         is_causal: bool = False,
+        sliding_window: int | None = None,
     ):
         super().__init__()
         assert d_model % num_heads == 0
         self.d_model = d_model
         self.num_heads = num_heads
         self.is_causal = is_causal
+        self.sliding_window = sliding_window
 
         self.d_k = d_model // num_heads
         self.d_v = self.d_k
@@ -207,8 +214,13 @@ class MultiHeadSelfAttention(nn.Module):
         K = self.positional_encoder(K, token_positions)
 
         # Shape: (..., num_heads, sequence_length, d_k)
-        attn_output = F.scaled_dot_product_attention(
-            query=Q, key=K, value=V, is_causal=self.is_causal, enable_gqa=False
+        attn_output = scaled_dot_product_attention(
+            query=Q,
+            key=K,
+            value=V,
+            is_causal=self.is_causal,
+            sliding_window=self.sliding_window,
+            enable_gqa=False,
         )
 
         # Concatenate the attention output from all heads.
@@ -240,6 +252,8 @@ class TransformerBlock(nn.Module):
             The RoPE module to use.
         is_causal: bool
             Whether to use causal masking (default: False).
+        sliding_window: int | None
+            Window size for sliding window attention (default: None).
 
     Returns:
         FloatTensor of shape `(batch_size, sequence_length, d_model)`.
@@ -252,6 +266,7 @@ class TransformerBlock(nn.Module):
         d_ff: int,
         positional_encoder: RotaryEmbedding,
         is_causal: bool = False,
+        sliding_window: int | None = None,
     ):
         super().__init__()
         self.attn = MultiHeadSelfAttention(
@@ -259,6 +274,7 @@ class TransformerBlock(nn.Module):
             num_heads=num_heads,
             positional_encoder=positional_encoder,
             is_causal=is_causal,
+            sliding_window=sliding_window,
         )
         self.ffn = SwiGLU(d_model=d_model, d_ff=d_ff)
         self.ln1 = nn.RMSNorm(d_model)
@@ -307,6 +323,12 @@ class Transformer(nn.Module):
             RoPE frequency base (default: 10000.0).
         is_causal: bool
             Enable causal masking (default: False for MLM).
+        sliding_window: list[int | None] | None
+            Per-layer window sizes for sliding window attention. Can be:
+            - None: No sliding window (standard attention for all layers)
+            - List of length n_layers: Specific window size per layer (None = standard attention)
+            Example: [None, 256, 256, 128] for 4 layers
+            (default: None).
         context_length: int
             Maximum sequence length for RoPE cache (default: 512).
     """
@@ -319,6 +341,7 @@ class Transformer(nn.Module):
         d_ff: int | None = None,
         rope_theta: float = 10000.0,
         is_causal: bool = False,
+        sliding_window: list[int | None] | None = None,
         context_length: int = 512,
     ):
         super().__init__()
@@ -326,6 +349,18 @@ class Transformer(nn.Module):
         self.n_layers = n_layers
         self.num_heads = num_heads
         self.is_causal = is_causal
+
+        # Process sliding_window parameter
+        if sliding_window is None:
+            # No sliding window for any layer
+            self.sliding_window = [None] * n_layers
+        else:
+            # Validate list length
+            if len(sliding_window) != n_layers:
+                raise ValueError(
+                    f"sliding_window list must have length {n_layers}, got {len(sliding_window)}"
+                )
+            self.sliding_window = sliding_window
 
         # Auto-compute d_ff using CS336 formula: floor(d_model * 8/3 / 64) * 64
         if d_ff is None:
@@ -339,7 +374,7 @@ class Transformer(nn.Module):
             context_length=context_length, dim=d_head, theta=rope_theta
         )
 
-        # Stack of transformer blocks
+        # Stack of transformer blocks with per-layer sliding windows
         self.layers = nn.ModuleList(
             [
                 TransformerBlock(
@@ -348,8 +383,9 @@ class Transformer(nn.Module):
                     d_ff=d_ff,
                     positional_encoder=self.positional_encoder,
                     is_causal=is_causal,
+                    sliding_window=self.sliding_window[i],
                 )
-                for _ in range(n_layers)
+                for i in range(n_layers)
             ]
         )
 
