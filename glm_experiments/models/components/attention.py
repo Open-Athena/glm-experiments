@@ -129,6 +129,16 @@ def scaled_dot_product_attention(
     # FlexAttention path: use sliding window
     batch_size, num_heads, seq_len, head_dim = query.shape
 
+    # FlexAttention requires all tensors to have the same dtype.
+    # Unlike F.scaled_dot_product_attention, flex_attention is not in the autocast
+    # whitelist, so we need to manually ensure dtype consistency.
+    # We match to value.dtype since autocast has already converted it to the target precision.
+    target_dtype = value.dtype
+    if query.dtype != target_dtype:
+        query = query.to(target_dtype)
+    if key.dtype != target_dtype:
+        key = key.to(target_dtype)
+
     # Determine mask type based on is_causal flag
     mask_type = "causal_sliding_window" if is_causal else "sliding_window"
 

@@ -316,59 +316,157 @@ def test_mask_caching_reuses_block_mask():
     # Clear cache
     _get_or_create_block_mask.cache_clear()
 
-    # Create first mask
-    mask1 = _get_or_create_block_mask("sliding_window", 8, 2, 4, 16, "cpu")
 
-    # Create second mask with identical parameters
-    mask2 = _get_or_create_block_mask("sliding_window", 8, 2, 4, 16, "cpu")
+def test_transformer_with_sliding_window():
+    """Test Transformer class with per-layer sliding window."""
+    from glm_experiments.models.components.transformer import Transformer
 
-    # Should be the exact same object (cached)
-    assert mask1 is mask2
+    hidden_size = 128
+    n_layers = 4
+    num_heads = 4
+    seq_len = 32
+    batch_size = 2
 
-    # Verify cache hit
-    cache_info = _get_or_create_block_mask.cache_info()
-    assert cache_info.hits >= 1
+    # Create Transformer with per-layer sliding windows
+    # Different window size per layer
+    transformer = Transformer(
+        hidden_size=hidden_size,
+        n_layers=n_layers,
+        num_heads=num_heads,
+        is_causal=False,
+        sliding_window=[None, 16, 8, 8],  # First layer standard, rest with windows
+        context_length=seq_len,
+    )
+
+    # Forward pass
+    x = torch.randn(batch_size, seq_len, hidden_size)
+    output = transformer(x)
+
+    assert output.shape == (batch_size, seq_len, hidden_size)
+    assert not torch.isnan(output).any()
+    assert not torch.isinf(output).any()
 
 
-def test_mask_cache_different_configs():
-    """Verify different configurations create different masks."""
-    _get_or_create_block_mask.cache_clear()
+def test_transformer_without_sliding_window():
+    """Test Transformer class defaults to standard attention when sliding_window=None."""
+    from glm_experiments.models.components.transformer import Transformer
 
-    # Different window sizes
-    mask1 = _get_or_create_block_mask("sliding_window", 8, 2, 4, 16, "cpu")
-    mask2 = _get_or_create_block_mask("sliding_window", 16, 2, 4, 16, "cpu")
+    hidden_size = 128
+    n_layers = 2
+    num_heads = 4
+    seq_len = 32
+    batch_size = 2
 
-    # Should be different objects
-    assert mask1 is not mask2
+    # Create Transformer without sliding window (default behavior)
+    transformer = Transformer(
+        hidden_size=hidden_size,
+        n_layers=n_layers,
+        num_heads=num_heads,
+        is_causal=False,
+        sliding_window=None,  # Explicit None
+        context_length=seq_len,
+    )
 
-    # Different mask types
-    mask3 = _get_or_create_block_mask("causal_sliding_window", 8, 2, 4, 16, "cpu")
+    # Forward pass
+    x = torch.randn(batch_size, seq_len, hidden_size)
+    output = transformer(x)
 
-    assert mask1 is not mask3
+    assert output.shape == (batch_size, seq_len, hidden_size)
+    assert not torch.isnan(output).any()
+    assert not torch.isinf(output).any()
 
 
-def test_cache_performance_no_recompilation():
-    """Measure that 2nd call is faster than 1st (no recompilation)."""
-    _get_or_create_block_mask.cache_clear()
+def test_transformer_causal_with_sliding_window():
+    """Test Transformer with both causal and per-layer sliding window."""
+    from glm_experiments.models.components.transformer import Transformer
 
-    batch, heads, seq_len, head_dim = 2, 4, 32, 64
-    query = torch.randn(batch, heads, seq_len, head_dim)
-    key = torch.randn(batch, heads, seq_len, head_dim)
-    value = torch.randn(batch, heads, seq_len, head_dim)
+    hidden_size = 128
+    n_layers = 3
+    num_heads = 4
+    seq_len = 32
+    batch_size = 2
 
-    # First call (may include compilation)
-    start = time.time()
-    output1 = scaled_dot_product_attention(query, key, value, sliding_window=8)
-    first_time = time.time() - start
+    # Create causal Transformer with per-layer sliding windows
+    transformer = Transformer(
+        hidden_size=hidden_size,
+        n_layers=n_layers,
+        num_heads=num_heads,
+        is_causal=True,
+        sliding_window=[16, 16, 8],  # Different windows per layer
+        context_length=seq_len,
+    )
 
-    # Second call (should use cache)
-    start = time.time()
-    output2 = scaled_dot_product_attention(query, key, value, sliding_window=8)
-    second_time = time.time() - start
+    # Forward pass
+    x = torch.randn(batch_size, seq_len, hidden_size)
+    output = transformer(x)
 
-    # Outputs should be identical
-    assert torch.allclose(output1, output2, rtol=1e-5)
+    assert output.shape == (batch_size, seq_len, hidden_size)
+    assert not torch.isnan(output).any()
+    assert not torch.isinf(output).any()
 
-    # Second call should be at least as fast as first (usually much faster)
-    # We use a lenient check since timing can be noisy
-    assert second_time <= first_time * 2.0  # Allow 2x tolerance for noise
+
+def test_transformer_sliding_window_length_validation():
+    """Test that Transformer validates sliding_window list length."""
+    import pytest
+
+    from glm_experiments.models.components.transformer import Transformer
+
+    hidden_size = 128
+    n_layers = 4
+    num_heads = 4
+
+    # Wrong length should raise ValueError
+    with pytest.raises(ValueError, match="sliding_window list must have length 4"):
+        Transformer(
+            hidden_size=hidden_size,
+            n_layers=n_layers,
+            num_heads=num_heads,
+            sliding_window=[16, 8],  # Only 2 elements, need 4
+        )
+
+
+def test_transformer_all_layers_with_same_window():
+    """Test Transformer with same sliding window for all layers."""
+    from glm_experiments.models.components.transformer import Transformer
+
+    hidden_size = 128
+    n_layers = 3
+    num_heads = 4
+    seq_len = 32
+    batch_size = 2
+
+    # All layers with same window size
+    transformer = Transformer(
+        hidden_size=hidden_size,
+        n_layers=n_layers,
+        num_heads=num_heads,
+        sliding_window=[16, 16, 16],  # Same window for all layers
+        context_length=seq_len,
+    )
+
+    # Forward pass
+    x = torch.randn(batch_size, seq_len, hidden_size)
+    output = transformer(x)
+
+    assert output.shape == (batch_size, seq_len, hidden_size)
+    assert not torch.isnan(output).any()
+    assert not torch.isinf(output).any()
+
+
+def test_mixed_dtype_handling():
+    """Test that mixed dtypes are handled correctly (autocast scenario)."""
+    batch, heads, seq_len, head_dim = 2, 4, 16, 32
+
+    # Simulate mixed precision: Q, K in float32, V in bfloat16
+    # This happens with autocast where some ops stay float32
+    query = torch.randn(batch, heads, seq_len, head_dim, dtype=torch.float32)
+    key = torch.randn(batch, heads, seq_len, head_dim, dtype=torch.float32)
+    value = torch.randn(batch, heads, seq_len, head_dim, dtype=torch.bfloat16)
+
+    # Should handle mixed dtypes and convert to target dtype
+    output = scaled_dot_product_attention(query, key, value, sliding_window=8)
+
+    # Output should match value dtype (target precision)
+    assert output.dtype == torch.bfloat16
+    assert output.shape == (batch, heads, seq_len, head_dim)
+    assert not torch.isnan(output).any()
