@@ -1,17 +1,17 @@
 # @package _global_
 
 # to execute this experiment run:
-# python glm_experiments/train.py experiment=clm_transformer_small
+# python glm_experiments/train.py experiment=clm_transformer_large
 
 defaults:
   - override /data: gpn_animal_promoter
-  - override /model: clm_transformer_small
+  - override /model: clm_transformer_large
   - override /trainer: gpn_animal_promoter
 
 logger:
   wandb:
-    name: experiment-clm-transformer-small
-    tags: ["experiment", "clm", "transformer", "small"]
+    name: experiment-clm-transformer-large
+    tags: ["experiment", "clm", "transformer", "large"]
 
 data:
   _target_: glm_experiments.data.lm_datamodule.CLMDataModule
