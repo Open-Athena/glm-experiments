@@ -15,7 +15,7 @@ logger:
 
 data:
   _target_: glm_experiments.data.lm_datamodule.CLMDataModule
-  per_device_batch_size: 256
+  per_device_batch_size: 128
 
 model:
   scheduler:
