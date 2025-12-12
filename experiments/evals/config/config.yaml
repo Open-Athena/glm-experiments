@@ -59,10 +59,6 @@ models:
   "400000": results/model/checkpoints_second_part/checkpoint-30000
   "500000": results/model/checkpoints_second_part/checkpoint-130000
 
-scorings:
-  - LLR.minus.score
-  - absLLR.plus.score
-
 # Dataset evaluation configurations
 # Each dataset specifies which metrics and scoring functions to compute
 dataset_configs:
@@ -86,4 +82,4 @@ dataset_configs:
   promoterai_benchmark:
     # This applies to all PromoterAI benchmark datasets
     metrics: [AUPRC]
-    scorings: [absLLR.plus.score]
+    scorings: [absLLR.plus.score, L2.plus.score]
