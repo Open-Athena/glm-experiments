@@ -21,7 +21,7 @@ rule model_llr:
     output:
         "results/features/{dataset}/{model}_LLR.parquet",
     wildcard_constraints:
-        dataset="|".join(config["datasets"]),
+        dataset="|".join(get_all_datasets()),
         model="|".join(config["models"].keys()),
     threads:
         workflow.cores
@@ -57,7 +57,7 @@ rule model_abs_llr:
     output:
         "results/features/{dataset}/{model}_absLLR.parquet",
     wildcard_constraints:
-        dataset="|".join(config["datasets"]),
+        dataset="|".join(get_all_datasets()),
         model="|".join(config["models"].keys()),
     run:
         df = pd.read_parquet(input[0])
