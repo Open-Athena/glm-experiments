@@ -42,7 +42,7 @@ dataset_configs:
     scorings: [absLLR.plus.score]
 
   gnomad_promoter:
-    metrics: [AUPRC, AUROC]
+    metrics: [AUROC]
     scorings: [LLR.minus.score]
 
   sat_mut_mpra_promoter:

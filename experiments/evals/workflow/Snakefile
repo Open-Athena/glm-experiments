@@ -41,6 +41,24 @@ def get_all_metric_files():
     return files
 
 
+def get_all_correlation_files():
+    """Generate list of all correlation analysis output files."""
+    return [
+        "results/correlations/metrics_wide.parquet",
+        "results/correlations/metrics_long.parquet",
+        "results/correlations/pearson.tsv",
+        "results/correlations/spearman.tsv",
+        "results/correlations/pearson_heatmap.png",
+        "results/correlations/pearson_heatmap.pdf",
+        "results/correlations/spearman_heatmap.png",
+        "results/correlations/spearman_heatmap.pdf",
+        "results/correlations/metrics_vs_step.png",
+        "results/correlations/metrics_vs_step.pdf",
+        "results/correlations/metric_pairs.png",
+        "results/correlations/metric_pairs.pdf",
+    ]
+
+
 include: "rules/common.smk"
 include: "rules/gnomad.smk"
 include: "rules/metrics.smk"
@@ -51,4 +69,5 @@ include: "rules/traitgym.smk"
 
 rule all:
     input:
-        get_all_metric_files()
+        get_all_metric_files(),
+        get_all_correlation_files()
