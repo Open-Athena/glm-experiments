@@ -21,9 +21,21 @@ promoterai_benchmarks:
   promoterai_ukbb_proteome: UKBB_proteome.tsv
   promoterai_gel_rna: GEL_RNA.tsv
 
+# Combined dataset groups for efficient batch inference
+combined_dataset_groups:
+  promoterai_combined:
+    datasets:
+      - promoterai_gtex_outlier
+      - promoterai_cagi5_saturation
+      - promoterai_mpra_saturation
+      - promoterai_gtex_eqtl
+      - promoterai_mpra_eqtl
+      - promoterai_ukbb_proteome
+      - promoterai_gel_rna
+
 context_size: 512
-per_device_batch_size: 128
-torch_compile: False # overhead not worth it for small datasets and fast models
+per_device_batch_size: 512
+torch_compile: True # consider if overhead is worth it for small datasets and fast models
 
 # first part run for 370k steps, second part run for 130k steps
 models:
@@ -63,28 +75,28 @@ dataset_configs:
   # PromoterAI benchmarks
   promoterai_gtex_outlier:
     metrics: [AUPRC]
-    scorings: [LLR.minus.score, absLLR.plus.score]
+    scorings: [absLLR.plus.score]
 
   promoterai_cagi5_saturation:
     metrics: [AUPRC]
-    scorings: [LLR.minus.score, absLLR.plus.score]
+    scorings: [absLLR.plus.score]
 
   promoterai_mpra_saturation:
     metrics: [AUPRC]
-    scorings: [LLR.minus.score, absLLR.plus.score]
+    scorings: [absLLR.plus.score]
 
   promoterai_gtex_eqtl:
     metrics: [AUPRC]
-    scorings: [LLR.minus.score, absLLR.plus.score]
+    scorings: [absLLR.plus.score]
 
   promoterai_mpra_eqtl:
     metrics: [AUPRC]
-    scorings: [LLR.minus.score, absLLR.plus.score]
+    scorings: [absLLR.plus.score]
 
   promoterai_ukbb_proteome:
     metrics: [AUPRC]
-    scorings: [LLR.minus.score, absLLR.plus.score]
+    scorings: [absLLR.plus.score]
 
   promoterai_gel_rna:
     metrics: [AUPRC]
-    scorings: [LLR.minus.score, absLLR.plus.score]
+    scorings: [absLLR.plus.score]

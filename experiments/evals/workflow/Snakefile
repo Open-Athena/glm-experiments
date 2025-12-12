@@ -2,7 +2,7 @@ configfile: "config/config.yaml"
 
 
 def get_all_datasets():
-    """Get list of all dataset names for wildcard constraints."""
+    """Get list of all dataset names that have metrics computed (individual benchmarks only)."""
     datasets = []
     for dataset in config["dataset_configs"].keys():
         if dataset == "sat_mut_mpra_promoter":
@@ -11,6 +11,15 @@ def get_all_datasets():
                 datasets.append(f"sat_mut_mpra_promoter_{promoter}")
         else:
             datasets.append(dataset)
+    return datasets
+
+
+def get_all_datasets_including_combined():
+    """Get all datasets including combined groups for intermediate processing."""
+    datasets = get_all_datasets()
+    # Add combined dataset groups
+    for group_name in config.get("combined_dataset_groups", {}).keys():
+        datasets.append(group_name)
     return datasets
 
 
@@ -70,5 +79,4 @@ include: "rules/traitgym.smk"
 
 rule all:
     input:
-        get_all_metric_files(),
-        get_all_correlation_files()
+        get_all_correlation_files(),
