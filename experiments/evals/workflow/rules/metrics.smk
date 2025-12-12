@@ -1,46 +1,85 @@
-rule metrics_AUPRC:
+# Metric function definitions
+def metric_auprc(y_true, y_pred):
+    """Compute Area Under Precision-Recall Curve."""
+    return average_precision_score(y_true, y_pred)
+
+
+def metric_auroc(y_true, y_pred):
+    """Compute Area Under ROC Curve."""
+    return roc_auc_score(y_true, y_pred)
+
+
+def metric_spearman(y_true, y_pred):
+    """Compute Spearman correlation coefficient."""
+    return spearmanr(y_true, y_pred)[0]
+
+
+# Metric registry - maps metric names to functions
+METRIC_FUNCTIONS = {
+    "AUPRC": metric_auprc,
+    "AUROC": metric_auroc,
+    "Spearman": metric_spearman,
+}
+
+
+def get_combined_group(dataset_name):
+    """Return combined group name if dataset belongs to one, else None."""
+    for group_name, group_config in config.get("combined_dataset_groups", {}).items():
+        if dataset_name in group_config["datasets"]:
+            return group_name
+    return None
+
+
+def get_dataset_input(wildcards):
+    """Get dataset input path - combined or individual."""
+    combined_group = get_combined_group(wildcards.dataset)
+    if combined_group:
+        return f"results/dataset/{combined_group}.parquet"
+    else:
+        return f"results/dataset/{wildcards.dataset}.parquet"
+
+
+def get_prediction_input(wildcards):
+    """Get prediction input path - combined or individual."""
+    combined_group = get_combined_group(wildcards.dataset)
+    if combined_group:
+        return f"results/prediction/{combined_group}/{wildcards.model}.parquet"
+    else:
+        return f"results/prediction/{wildcards.dataset}/{wildcards.model}.parquet"
+
+
+rule metrics:
+    """Unified metrics rule - handles AUPRC, AUROC, Spearman for all datasets."""
     input:
-        "results/dataset/{dataset}.parquet",
-        "results/prediction/{dataset}/{model}.parquet",
+        dataset=get_dataset_input,
+        prediction=get_prediction_input,
     output:
-        "results/metrics/{dataset}/AUPRC/{model}.tsv",
+        "results/metrics/{dataset}/{metric}/{model}.tsv",
     wildcard_constraints:
         dataset="|".join(get_all_datasets()),
     run:
-        y_true = pd.read_parquet(input[0], columns=["label"]).label
-        y_pred = pd.read_parquet(input[1], columns=["score"]).score
-        AUPRC = average_precision_score(y_true, y_pred)
-        pd.DataFrame({"AUPRC": [AUPRC]}).to_csv(output[0], sep="\t", index=False, float_format="%.3f")
+        # Load data
+        df_dataset = pd.read_parquet(input.dataset)
+        df_pred = pd.read_parquet(input.prediction)
 
+        # Filter to specific benchmark if using combined dataset (positional filtering)
+        if 'dataset' in df_dataset.columns:
+            mask = df_dataset['dataset'] == wildcards.dataset
+            df_dataset = df_dataset[mask]
+            df_pred = df_pred[mask]  # Apply same positional mask
 
-rule metrics_AUROC:
-    input:
-        "results/dataset/{dataset}.parquet",
-        "results/prediction/{dataset}/{model}.parquet",
-    output:
-        "results/metrics/{dataset}/AUROC/{model}.tsv",
-    wildcard_constraints:
-        dataset="|".join(get_all_datasets()),
-    run:
-        y_true = pd.read_parquet(input[0], columns=["label"]).label
-        y_pred = pd.read_parquet(input[1], columns=["score"]).score
-        AUROC = roc_auc_score(y_true, y_pred)
-        pd.DataFrame({"AUROC": [AUROC]}).to_csv(output[0], sep="\t", index=False, float_format="%.3f")
+        # Extract labels and scores
+        y_true = df_dataset["label"]
+        y_pred = df_pred["score"]
 
+        # Compute metric using registry
+        metric_func = METRIC_FUNCTIONS[wildcards.metric]
+        value = metric_func(y_true, y_pred)
 
-rule metrics_Spearman:
-    input:
-        "results/dataset/{dataset}.parquet",
-        "results/prediction/{dataset}/{model}.parquet",
-    output:
-        "results/metrics/{dataset}/Spearman/{model}.tsv",
-    wildcard_constraints:
-        dataset="|".join(get_all_datasets()),
-    run:
-        y_true = pd.read_parquet(input[0], columns=["label"]).label
-        y_pred = pd.read_parquet(input[1], columns=["score"]).score
-        Spearman = spearmanr(y_true, y_pred)[0]
-        pd.DataFrame({"Spearman": [Spearman]}).to_csv(output[0], sep="\t", index=False, float_format="%.3f")
+        # Save result
+        pd.DataFrame({wildcards.metric: [value]}).to_csv(
+            output[0], sep="\t", index=False, float_format="%.3f"
+        )
 
 
 rule aggregate_metrics:
