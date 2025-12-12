@@ -31,7 +31,7 @@ rule combine_promoterai_datasets:
     output:
         "results/dataset/{combined_group}.parquet"
     wildcard_constraints:
-        combined_group="|".join(config.get("combined_dataset_groups", {}).keys())
+        combined_group="promoterai_combined"
     run:
         datasets = config["combined_dataset_groups"][wildcards.combined_group]["datasets"]
         dfs = []

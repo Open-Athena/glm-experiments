@@ -32,6 +32,17 @@ combined_dataset_groups:
       - promoterai_mpra_eqtl
       - promoterai_ukbb_proteome
       - promoterai_gel_rna
+  sat_mut_mpra_combined:
+    datasets:
+      - sat_mut_mpra_promoter_F9
+      - sat_mut_mpra_promoter_GP1BA
+      - sat_mut_mpra_promoter_HBB
+      - sat_mut_mpra_promoter_HBG1
+      - sat_mut_mpra_promoter_HNF4A
+      - sat_mut_mpra_promoter_LDLR
+      - sat_mut_mpra_promoter_MSMB
+      - sat_mut_mpra_promoter_PKLR
+      - sat_mut_mpra_promoter_TERT
 
 context_size: 512
 per_device_batch_size: 512
@@ -72,31 +83,7 @@ dataset_configs:
     metrics: [Spearman]
     scorings: [absLLR.plus.score]
 
-  # PromoterAI benchmarks
-  promoterai_gtex_outlier:
-    metrics: [AUPRC]
-    scorings: [absLLR.plus.score]
-
-  promoterai_cagi5_saturation:
-    metrics: [AUPRC]
-    scorings: [absLLR.plus.score]
-
-  promoterai_mpra_saturation:
-    metrics: [AUPRC]
-    scorings: [absLLR.plus.score]
-
-  promoterai_gtex_eqtl:
-    metrics: [AUPRC]
-    scorings: [absLLR.plus.score]
-
-  promoterai_mpra_eqtl:
-    metrics: [AUPRC]
-    scorings: [absLLR.plus.score]
-
-  promoterai_ukbb_proteome:
-    metrics: [AUPRC]
-    scorings: [absLLR.plus.score]
-
-  promoterai_gel_rna:
+  promoterai_benchmark:
+    # This applies to all PromoterAI benchmark datasets
     metrics: [AUPRC]
     scorings: [absLLR.plus.score]

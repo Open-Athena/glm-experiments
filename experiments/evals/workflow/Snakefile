@@ -9,6 +9,10 @@ def get_all_datasets():
             # Expand for each promoter
             for promoter in config["sat_mut_mpra_promoter"]:
                 datasets.append(f"sat_mut_mpra_promoter_{promoter}")
+        elif dataset == "promoterai_benchmark":
+            # Expand for each PromoterAI benchmark
+            for benchmark in config["promoterai_benchmarks"].keys():
+                datasets.append(benchmark)
         else:
             datasets.append(dataset)
     return datasets
@@ -37,6 +41,15 @@ def get_all_metric_files():
                         for scoring in cfg["scorings"]:
                             files.append(
                                 f"results/metrics/{dataset_name}/{metric}/{model}_{scoring}.tsv"
+                            )
+        elif dataset == "promoterai_benchmark":
+            # Handle promoterai_benchmark - expand for each benchmark
+            for benchmark in config["promoterai_benchmarks"].keys():
+                for metric in cfg["metrics"]:
+                    for model in config["models"].keys():
+                        for scoring in cfg["scorings"]:
+                            files.append(
+                                f"results/metrics/{benchmark}/{metric}/{model}_{scoring}.tsv"
                             )
         else:
             # Regular datasets
