@@ -5,7 +5,7 @@ rule metrics_AUPRC:
     output:
         "results/metrics/{dataset}/AUPRC/{model}.tsv",
     wildcard_constraints:
-        dataset="|".join(config["datasets"]),
+        dataset="|".join(get_all_datasets()),
     run:
         y_true = pd.read_parquet(input[0], columns=["label"]).label
         y_pred = pd.read_parquet(input[1], columns=["score"]).score
@@ -20,7 +20,7 @@ rule metrics_AUROC:
     output:
         "results/metrics/{dataset}/AUROC/{model}.tsv",
     wildcard_constraints:
-        dataset="|".join(config["datasets"]),
+        dataset="|".join(get_all_datasets()),
     run:
         y_true = pd.read_parquet(input[0], columns=["label"]).label
         y_pred = pd.read_parquet(input[1], columns=["score"]).score
@@ -35,7 +35,7 @@ rule metrics_Spearman:
     output:
         "results/metrics/{dataset}/Spearman/{model}.tsv",
     wildcard_constraints:
-        dataset="|".join(config["datasets"]),
+        dataset="|".join(get_all_datasets()),
     run:
         y_true = pd.read_parquet(input[0], columns=["label"]).label
         y_pred = pd.read_parquet(input[1], columns=["score"]).score

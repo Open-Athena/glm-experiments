@@ -30,16 +30,22 @@ scorings:
   - LLR.minus.score
   - absLLR.plus.score
 
-datasets:
-  - traitgym_mendelian_promoter
-  - traitgym_complex_promoter
-  - gnomad_promoter
-  - sat_mut_mpra_promoter_F9
-  - sat_mut_mpra_promoter_GP1BA
-  - sat_mut_mpra_promoter_HBB
-  - sat_mut_mpra_promoter_HBG1
-  - sat_mut_mpra_promoter_HNF4A
-  - sat_mut_mpra_promoter_LDLR
-  - sat_mut_mpra_promoter_MSMB
-  - sat_mut_mpra_promoter_PKLR
-  - sat_mut_mpra_promoter_TERT
+# Dataset evaluation configurations
+# Each dataset specifies which metrics and scoring functions to compute
+dataset_configs:
+  traitgym_mendelian_promoter:
+    metrics: [AUPRC]
+    scorings: [LLR.minus.score]
+
+  traitgym_complex_promoter:
+    metrics: [AUPRC]
+    scorings: [absLLR.plus.score]
+
+  gnomad_promoter:
+    metrics: [AUPRC, AUROC]
+    scorings: [LLR.minus.score]
+
+  sat_mut_mpra_promoter:
+    # This applies to all promoter-specific datasets
+    metrics: [Spearman]
+    scorings: [absLLR.plus.score]
