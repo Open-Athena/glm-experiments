@@ -63,6 +63,7 @@ include: "rules/common.smk"
 include: "rules/gnomad.smk"
 include: "rules/metrics.smk"
 include: "rules/model.smk"
+include: "rules/promoterai_benchmarks.smk"
 include: "rules/sat_mut_mpra.smk"
 include: "rules/traitgym.smk"
 
