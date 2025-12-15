@@ -329,3 +329,144 @@ rule plot_metric_pairs:
         fig.savefig(output.png, dpi=300, bbox_inches='tight')
         fig.savefig(output.pdf, bbox_inches='tight')
         plt.close()
+
+
+rule plot_scorings_vs_step:
+    """Plot comparison of scoring methods across training steps for each dataset."""
+    input:
+        "results/correlations/metrics_long.parquet"
+    output:
+        png="results/correlations/scorings_vs_step.png",
+        pdf="results/correlations/scorings_vs_step.pdf"
+    run:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        # Load data
+        df = pd.read_parquet(input[0])
+
+        # Helper function to get primary metric for each dataset
+        def get_primary_metric(dataset_name):
+            """Return primary metric type for a given dataset."""
+            if dataset_name.startswith('sat_mut_mpra_promoter'):
+                return 'Spearman'
+            elif dataset_name == 'gnomad_promoter':
+                return 'AUROC'
+            else:  # TraitGym and PromoterAI
+                return 'AUPRC'
+
+        # Filter to primary metrics only
+        df['primary_metric'] = df['dataset'].apply(get_primary_metric)
+        df_primary = df[df['metric_type'] == df['primary_metric']].copy()
+
+        # Define dataset ordering (logical grouping)
+        dataset_order = [
+            # Classification tasks
+            'traitgym_mendelian_promoter',
+            'traitgym_complex_promoter',
+            'gnomad_promoter',
+            'promoterai_gtex_outlier',
+            'promoterai_cagi5_saturation',
+            'promoterai_mpra_saturation',
+            'promoterai_gtex_eqtl',
+            'promoterai_mpra_eqtl',
+            'promoterai_ukbb_proteome',
+            'promoterai_gel_rna',
+            # Regression tasks
+            'sat_mut_mpra_promoter_F9',
+            'sat_mut_mpra_promoter_GP1BA',
+            'sat_mut_mpra_promoter_HBB',
+            'sat_mut_mpra_promoter_HBG1',
+            'sat_mut_mpra_promoter_HNF4A',
+            'sat_mut_mpra_promoter_LDLR',
+            'sat_mut_mpra_promoter_MSMB',
+            'sat_mut_mpra_promoter_PKLR',
+            'sat_mut_mpra_promoter_TERT',
+        ]
+
+        # Define colors and markers for scoring methods
+        scoring_styles = {
+            'LLR.minus.score': {'color': '#1f77b4', 'marker': 'o', 'label': 'LLR−'},
+            'absLLR.plus.score': {'color': '#ff7f0e', 'marker': 's', 'label': 'absLLR'},
+            'L2.plus.score': {'color': '#2ca02c', 'marker': '^', 'label': 'L2'},
+        }
+
+        # Helper function to clean dataset names for display
+        def clean_dataset_name(name):
+            """Convert dataset name to readable title."""
+            # Special cases
+            if name == 'traitgym_mendelian_promoter':
+                return 'TraitGym Mendelian Promoter'
+            elif name == 'traitgym_complex_promoter':
+                return 'TraitGym Complex Promoter'
+            elif name == 'gnomad_promoter':
+                return 'gnomAD Promoter'
+            elif name.startswith('sat_mut_mpra_promoter_'):
+                promoter = name.replace('sat_mut_mpra_promoter_', '')
+                return f'Sat Mut MPRA {promoter}'
+            elif name.startswith('promoterai_'):
+                suffix = name.replace('promoterai_', '').replace('_', ' ').title()
+                return f'PromoterAI {suffix}'
+            else:
+                return name.replace('_', ' ').title()
+
+        # Create figure with subplots
+        nrows, ncols = 4, 5
+        fig, axes = plt.subplots(nrows, ncols, figsize=(20, 16))
+        axes = axes.flatten()
+
+        # Plot each dataset
+        for idx, dataset in enumerate(dataset_order):
+            ax = axes[idx]
+
+            # Get data for this dataset
+            df_dataset = df_primary[df_primary['dataset'] == dataset].copy()
+
+            if df_dataset.empty:
+                ax.text(0.5, 0.5, 'No Data', ha='center', va='center',
+                       transform=ax.transAxes, fontsize=10)
+                ax.set_title(clean_dataset_name(dataset), fontsize=10, fontweight='bold')
+                continue
+
+            # Get metric type for y-axis label
+            metric_type = df_dataset['metric_type'].iloc[0]
+
+            # Plot each scoring method
+            for scoring in df_dataset['scoring'].unique():
+                if scoring in scoring_styles:
+                    df_scoring = df_dataset[df_dataset['scoring'] == scoring].sort_values('step')
+                    style = scoring_styles[scoring]
+                    ax.plot(df_scoring['step'], df_scoring['value'],
+                           color=style['color'], marker=style['marker'],
+                           linewidth=2, markersize=6, label=style['label'])
+
+            # Styling
+            ax.set_title(f"{clean_dataset_name(dataset)} ({metric_type})",
+                        fontsize=10, fontweight='bold')
+            ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
+            ax.legend(fontsize=8, loc='best', framealpha=0.9)
+
+            # X-axis: show labels only on bottom row
+            if idx >= (nrows - 1) * ncols:
+                ax.set_xlabel('Training Step', fontsize=9)
+                ax.tick_params(axis='x', rotation=45)
+            else:
+                ax.set_xticklabels([])
+
+            # Y-axis
+            ax.set_ylabel('Metric Value', fontsize=9)
+            ax.tick_params(axis='both', labelsize=8)
+
+        # Hide unused subplot (bottom-right)
+        axes[-1].axis('off')
+
+        # Overall title
+        fig.suptitle('Scoring Method Comparison Across Training Steps',
+                    fontsize=16, fontweight='bold', y=0.995)
+
+        plt.tight_layout()
+        fig.savefig(output.png, dpi=300, bbox_inches='tight')
+        fig.savefig(output.pdf, bbox_inches='tight')
+        plt.close()

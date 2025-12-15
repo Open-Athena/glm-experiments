@@ -78,6 +78,8 @@ def get_all_correlation_files():
         "results/correlations/metrics_vs_step.pdf",
         "results/correlations/metric_pairs.png",
         "results/correlations/metric_pairs.pdf",
+        "results/correlations/scorings_vs_step.png",
+        "results/correlations/scorings_vs_step.pdf",
     ]
 
 
@@ -92,4 +94,5 @@ include: "rules/traitgym.smk"
 
 rule all:
     input:
+        # get_all_metric_files(),
         get_all_correlation_files(),

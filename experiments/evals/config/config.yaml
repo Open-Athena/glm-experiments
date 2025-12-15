@@ -59,31 +59,27 @@ models:
   "400000": results/model/checkpoints_second_part/checkpoint-30000
   "500000": results/model/checkpoints_second_part/checkpoint-130000
 
-scorings:
-  - LLR.minus.score
-  - absLLR.plus.score
-
 # Dataset evaluation configurations
 # Each dataset specifies which metrics and scoring functions to compute
 dataset_configs:
   traitgym_mendelian_promoter:
     metrics: [AUPRC]
-    scorings: [LLR.minus.score]
+    scorings: [LLR.minus.score, absLLR.plus.score, L2.plus.score]
 
   traitgym_complex_promoter:
     metrics: [AUPRC]
-    scorings: [absLLR.plus.score]
+    scorings: [LLR.minus.score, absLLR.plus.score, L2.plus.score]
 
   gnomad_promoter:
     metrics: [AUROC]
-    scorings: [LLR.minus.score]
+    scorings: [LLR.minus.score, absLLR.plus.score, L2.plus.score]
 
   sat_mut_mpra_promoter:
     # This applies to all promoter-specific datasets
     metrics: [Spearman]
-    scorings: [absLLR.plus.score]
+    scorings: [LLR.minus.score, absLLR.plus.score, L2.plus.score]
 
   promoterai_benchmark:
     # This applies to all PromoterAI benchmark datasets
     metrics: [AUPRC]
-    scorings: [absLLR.plus.score]
+    scorings: [LLR.minus.score, absLLR.plus.score, L2.plus.score]
