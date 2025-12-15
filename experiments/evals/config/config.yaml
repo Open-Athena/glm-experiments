@@ -64,22 +64,22 @@ models:
 dataset_configs:
   traitgym_mendelian_promoter:
     metrics: [AUPRC]
-    scorings: [LLR.minus.score, L2.plus.score]
+    scorings: [LLR.minus.score, absLLR.plus.score, L2.plus.score]
 
   traitgym_complex_promoter:
     metrics: [AUPRC]
-    scorings: [absLLR.plus.score, L2.plus.score]
+    scorings: [LLR.minus.score, absLLR.plus.score, L2.plus.score]
 
   gnomad_promoter:
     metrics: [AUROC]
-    scorings: [LLR.minus.score, L2.plus.score]
+    scorings: [LLR.minus.score, absLLR.plus.score, L2.plus.score]
 
   sat_mut_mpra_promoter:
     # This applies to all promoter-specific datasets
     metrics: [Spearman]
-    scorings: [absLLR.plus.score, L2.plus.score]
+    scorings: [LLR.minus.score, absLLR.plus.score, L2.plus.score]
 
   promoterai_benchmark:
     # This applies to all PromoterAI benchmark datasets
     metrics: [AUPRC]
-    scorings: [absLLR.plus.score, L2.plus.score]
+    scorings: [LLR.minus.score, absLLR.plus.score, L2.plus.score]
