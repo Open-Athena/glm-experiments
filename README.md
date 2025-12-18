@@ -74,6 +74,7 @@ make test-full
 ```bash
 uv run hf download songlab/gpn-animal-promoter-dataset --repo-type dataset --local-dir data/gpn-animal-promoter-dataset
 uv run hf download gonzalobenegas/Angiosperm_16_genomes_sharded --repo-type dataset --local-dir data/gonzalobenegas/Angiosperm_16_genomes_sharded
+uv run hf download gonzalobenegas/genomes-v2-genome_set-animals-intervals-v1_512_256 --repo-type dataset --local-dir data/gonzalobenegas/genomes-v2-genome_set-animals-intervals-v1_512_256
 ```
 
 ## How to run
