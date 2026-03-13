@@ -1,5 +1,18 @@
 # Experiment Log
 
+## Directions to explore
+
+- Sweep dropout rate and temperature
+- Further decrease learning rate
+- Try CNN pyramid architecture
+- Increase batch size (with smaller transformer or CNN)
+- Address repetitive elements (soft-masked/lowercase in genome): they have strong patterns the model may latch onto but are mostly non-functional. Could confuse the contrastive objective. Ideas:
+  - Mask out repeat regions before pooling (only embed non-repetitive content)
+  - Weighted mean pooling (downweight soft-masked positions, similar to MLM loss weighting)
+  - Augmentation via repeat shuffling (permute repeat regions in positive pairs to teach invariance)
+
+---
+
 ## 2026-03-13: SimCSE Small Transformer
 
 **Branch**: `SimCSE`
@@ -102,4 +115,54 @@ Run cancelled at step ~2355. Peak AUPRC: 0.2860 at step 600.
 - The model gets better at matching dropout-augmented views but the learned representations lose variant-discriminative information
 
 **Next steps**:
-- _TBD_
+- Add MLP projection head — contrastive learning literature (SimCLR, SimCSE) shows a projection head lets the encoder preserve richer representations while the head learns the contrastive-specific mapping
+
+---
+
+## 2026-03-13: SimCSE Small Transformer — lr=1e-4 + MLP projection head
+
+**Hypothesis**: Adding an MLP projection head (512 → GELU → 512) after mean pooling will decouple the encoder representations from the contrastive objective, allowing AUPRC to improve for longer before degrading.
+
+**Changes from previous run**:
+- Added 2-layer MLP projection head (512 → GELU → 512, +0.5M params)
+
+**Config**: `configs/experiment/simcse_small_lr1e4_mlp.yaml`
+
+**Command**:
+```bash
+uv run python glm_experiments/train.py experiment=simcse_small_lr1e4_mlp
+```
+
+**W&B**: https://wandb.ai/gonzalobenegas/glm-experiments/runs/5cata0gf
+
+**Results**:
+
+| Step | train/simcse_loss | val/simcse_loss | val/traitgym_mendelian_promoter_auprc |
+|------|-------------------|-----------------|---------------------------------------|
+| 100  | 1.370             | 1.470           | 0.1556                                |
+| 200  | 0.321             | 1.470           | 0.1406                                |
+| 300  | 0.083             | 0.335           | 0.1679                                |
+| 400  | 0.061             | 0.151           | 0.1429                                |
+| 500  | 0.019             | 0.082           | 0.1852                                |
+| 600  | 0.013             | 0.039           | 0.2417                                |
+| 700  | 0.005             | 0.019           | 0.1832                                |
+| 800  | 0.007             | 0.011           | 0.2584                                |
+| 900  | 0.006             | 0.011           | 0.2088                                |
+| 1000 | 0.002             | 0.007           | 0.1748                                |
+| 1100 | 0.003             | 0.007           | 0.1904                                |
+| 1200 | 0.002             | 0.007           | 0.2076                                |
+| 1300 | 0.003             | 0.006           | 0.1619                                |
+| 1400 | 0.001             | 0.005           | 0.2150                                |
+| 1500 | 0.000             | 0.004           | 0.1611                                |
+| 1600 | 0.001             | 0.004           | 0.1588                                |
+| 1700 | 0.001             | 0.006           | 0.1296                                |
+| 1800 | 0.000             | 0.004           | 0.1546                                |
+| 1900 | 0.001             | 0.004           | 0.1057                                |
+| 2000 | 0.001             | 0.004           | 0.1206                                |
+
+Completed at step 2000. Peak AUPRC: 0.2584 at step 800.
+
+**Observations**:
+- MLP head doesn't clearly help — peak AUPRC 0.258 vs 0.286 without MLP
+- Similar pattern: AUPRC peaks early then degrades, though degradation is slightly slower
+- Loss curves similar to no-MLP run

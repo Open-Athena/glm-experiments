@@ -43,6 +43,9 @@ dependencies = [
     "einx>=0.3.0",
     "jaxtyping>=0.2.0",
     "biofoundation @ git+https://github.com/Open-Athena/biofoundation.git@d3865288bbb4b5ab814df85599381f206e375fe6",
+    "umap-learn>=0.5.11",
+    "matplotlib>=3.10.7",
+    "seaborn>=0.13.2",
 ]
 
 [dependency-groups]

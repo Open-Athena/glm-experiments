@@ -212,7 +212,7 @@ class SimCSE(nn.Module):
     with different dropout masks, then applying InfoNCE contrastive loss with
     in-batch negatives.
 
-    Architecture: input_ids → embedder → encoder → layer_norm → dropout → mean_pool → embedding
+    Architecture: input_ids → embedder → encoder → layer_norm → dropout → mean_pool → [mlp] → embedding
 
     Does NOT inherit from LM — no decoder, different loss (contrastive vs cross-entropy).
 
@@ -223,6 +223,7 @@ class SimCSE(nn.Module):
         dropout_p: Dropout probability (required for SimCSE — without it, two forward
             passes produce identical embeddings and contrastive learning collapses)
         temperature: Temperature for InfoNCE loss scaling
+        mlp_projection: Optional MLP projection head applied after mean pooling
     """
 
     def __init__(
@@ -232,6 +233,7 @@ class SimCSE(nn.Module):
         layer_norm: nn.Module,
         dropout_p: float = 0.1,
         temperature: float = 0.05,
+        mlp_projection: nn.Module | None = None,
     ):
         super().__init__()
 
@@ -250,6 +252,7 @@ class SimCSE(nn.Module):
         self.layer_norm = layer_norm
         self.dropout = nn.Dropout(p=dropout_p)
         self.temperature = temperature
+        self.mlp_projection = mlp_projection
 
     def get_embeddings(self, input_ids: torch.Tensor) -> torch.Tensor:
         """Compute sequence embeddings via mean pooling.
@@ -266,6 +269,8 @@ class SimCSE(nn.Module):
         x = self.layer_norm(x)  # (batch, seq_len, hidden_dim)
         x = self.dropout(x)  # (batch, seq_len, hidden_dim)
         x = x.mean(dim=1)  # (batch, hidden_dim) — mean pool over positions
+        if self.mlp_projection is not None:
+            x = self.mlp_projection(x)
         return x
 
     def compute_loss(
