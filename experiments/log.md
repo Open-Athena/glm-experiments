@@ -280,3 +280,40 @@ Completed at step 2000. Peak AUPRC: 0.2534 at step 1100.
 - Similar to baseline — peak AUPRC 0.253 vs 0.258
 - Loss converges much slower (val=0.027 at step 2000 vs 0.004 with temp=0.05)
 - AUPRC volatile throughout, no clear degradation pattern
+
+---
+
+## 2026-03-13: SimCSE CNN Pyramid Tiny — bs=4096
+
+**Hypothesis**: A CNN pyramid encoder (inspired by AlphaGenome's sequence encoder) with progressive downsampling may capture TF binding site motifs hierarchically. Tiny model (3.5M params) allows batch size 4096 (16x more in-batch negatives).
+
+**Architecture**: CNN pyramid with 9 stages of max-pool(2), d_model=128, channel_growth=16 per stage (128→256 channels), kernel_size=5, initial wide conv kernel=15. See `glm_experiments/models/components/cnn_pyramid.py`.
+
+**Config**: `configs/experiment/simcse_cnn_tiny_bs4096.yaml`
+
+**Command**:
+```bash
+uv run python glm_experiments/train.py experiment=simcse_cnn_tiny_bs4096
+```
+
+**W&B**: https://wandb.ai/gonzalobenegas/glm-experiments/runs/6vu4o5rj
+
+**Results**:
+
+| Step | train/simcse_loss | val/simcse_loss | val/traitgym_mendelian_promoter_auprc |
+|------|-------------------|-----------------|---------------------------------------|
+| 100  | 7.170             | 4.990           | 0.1375                                |
+| 200  | 1.100             | 0.023           | 0.1742                                |
+| 300  | 0.072             | 0.011           | 0.1547                                |
+| 400  | 0.027             | 0.011           | 0.1445                                |
+| 500  | —                 | —               | 0.1425                                |
+| 600  | —                 | —               | 0.1460                                |
+| 700  | 0.006             | 0.011           | 0.1530                                |
+| 800  | —                 | —               | 0.1515                                |
+
+Cancelled at step ~800. Peak AUPRC: 0.1742 at step 200.
+
+**Observations**:
+- Much worse than transformer baseline (peak 0.174 vs 0.258)
+- Loss collapses very fast (near zero by step 200) but AUPRC stays flat ~0.15
+- CNN pyramid pools down to 1 position — may lose too much spatial information for VEP
