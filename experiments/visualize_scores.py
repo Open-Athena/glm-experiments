@@ -5,6 +5,7 @@ scores between ref/alt embeddings for each variant, and plots score distribution
 separated by label (pathogenic vs benign).
 
 Supports comparing multiple checkpoints side by side. Caches scores to disk.
+Can stratify by repeat vs non-repeat regions.
 
 Usage:
     # Random init only
@@ -96,11 +97,7 @@ def load_model(experiment, ckpt_path=None):
 
 
 def compute_scores(model, dataset, batch_size=128):
-    """Compute cosine similarity scores between ref and alt embeddings.
-
-    Returns raw cosine similarities (not negated). The plotting code handles
-    the sign convention.
-    """
+    """Compute cosine similarity scores between ref and alt embeddings."""
     scores = []
     with torch.no_grad():
         for i in range(0, len(dataset), batch_size):
@@ -132,20 +129,51 @@ def get_or_compute_scores(ckpt_path, experiment, dataset, cache_dir, use_cache):
     return scores
 
 
-def build_dataframe(all_scores, all_labels, ckpt_labels):
-    """Build a tidy dataframe for seaborn plotting.
+def get_repeat_status(cache_dir, use_cache):
+    """Get repeat/non-repeat status for each variant in the filtered eval set.
 
-    Columns: checkpoint, score, label
-    Score is raw cosine similarity (higher = more similar ref/alt).
+    Loads the raw TraitGym dataset, applies the same filter as the eval pipeline,
+    then checks the genome at each variant position.
     """
+    cache_path = cache_dir / "repeat_status.npy"
+    if use_cache and cache_path.exists():
+        print("  Loading cached repeat status")
+        return np.load(cache_path)
+
+    from biofoundation.data import Genome
+    from datasets import load_dataset
+
+    from glm_experiments.data.evals import filter_traitgym_promoter
+
+    print("  Loading filtered TraitGym variants...")
+    ds = load_dataset("songlab/TraitGym", "mendelian_traits", split="test")
+    ds = filter_traitgym_promoter(ds)
+
+    print("  Checking repeat status from genome...")
+    genome = Genome("data/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz")
+
+    is_repeat = np.array([
+        genome(v["chrom"], v["pos"] - 1, v["pos"]).islower() for v in ds
+    ])
+
+    np.save(cache_path, is_repeat)
+    print(f"  Repeat: {is_repeat.sum()}, Non-repeat: {(~is_repeat).sum()}")
+    return is_repeat
+
+
+def build_dataframe(all_scores, variant_labels, ckpt_labels, is_repeat=None):
+    """Build a tidy dataframe for seaborn plotting."""
     rows = []
     for scores, ckpt_label in zip(all_scores, ckpt_labels):
-        for score, label in zip(scores, all_labels):
-            rows.append({
+        for j, (score, label) in enumerate(zip(scores, variant_labels)):
+            row = {
                 "checkpoint": ckpt_label,
-                "score": score,
+                "score": float(score),
                 "label": "Pathogenic" if label else "Benign",
-            })
+            }
+            if is_repeat is not None:
+                row["region"] = "Repeat" if is_repeat[j] else "Non-repeat"
+            rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -166,6 +194,42 @@ def plot_score_histograms(df, ckpt_labels, output_path):
             x="score",
             hue="label",
             hue_order=["Benign", "Pathogenic"],
+            stat="density",
+            common_norm=False,
+            kde=True,
+            alpha=0.4,
+            ax=ax,
+        )
+        ax.set_title(ckpt_label)
+        ax.set_ylabel("Density")
+        if i < n_ckpts - 1:
+            ax.set_xlabel("")
+        else:
+            ax.set_xlabel("Cosine similarity (ref vs alt)")
+
+    fig.savefig(output_path, bbox_inches="tight", dpi=200)
+    plt.close(fig)
+    print(f"Saved {output_path}")
+
+
+def plot_score_histograms_by_region(df, ckpt_labels, output_path):
+    """Plot benign variant score distributions with hue=repeat status."""
+    n_ckpts = len(ckpt_labels)
+    benign = df[df["label"] == "Benign"]
+
+    fig, axes = plt.subplots(
+        n_ckpts, 1, figsize=(8, 3.5 * n_ckpts), sharex=True, squeeze=False
+    )
+
+    for i, ckpt_label in enumerate(ckpt_labels):
+        ax = axes[i, 0]
+        subset = benign[benign["checkpoint"] == ckpt_label]
+
+        sns.histplot(
+            data=subset,
+            x="score",
+            hue="region",
+            hue_order=["Non-repeat", "Repeat"],
             stat="density",
             common_norm=False,
             kde=True,
@@ -218,6 +282,10 @@ def main():
     print(f"  {len(dataset)} variants ({variant_labels.sum()} pathogenic, "
           f"{len(variant_labels) - variant_labels.sum()} benign)")
 
+    # Get repeat status
+    print("Loading repeat status...")
+    is_repeat = get_repeat_status(cache_dir, use_cache)
+
     # Compute scores for each checkpoint
     all_scores = []
     for i, ckpt_path in enumerate(ckpt_paths):
@@ -225,9 +293,12 @@ def main():
         scores = get_or_compute_scores(ckpt_path, args.experiment, dataset, cache_dir, use_cache)
         all_scores.append(scores)
 
-    # Build tidy dataframe and plot
-    df = build_dataframe(all_scores, variant_labels, labels)
+    # Build tidy dataframe
+    df = build_dataframe(all_scores, variant_labels, labels, is_repeat)
+
+    # Plot both views
     plot_score_histograms(df, labels, output_dir / "score_histograms.png")
+    plot_score_histograms_by_region(df, labels, output_dir / "score_histograms_by_region.png")
 
 
 if __name__ == "__main__":

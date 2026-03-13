@@ -166,3 +166,13 @@ Completed at step 2000. Peak AUPRC: 0.2584 at step 800.
 - MLP head doesn't clearly help — peak AUPRC 0.258 vs 0.286 without MLP
 - Similar pattern: AUPRC peaks early then degrades, though degradation is slightly slower
 - Loss curves similar to no-MLP run
+
+**Post-hoc analysis** (see `experiments/visualize_scores.py`, `experiments/visualize_embeddings.py`):
+
+UMAP of validation embeddings colored by repeat fraction and GC content (`experiments/figures/umap_comparison.png`). Score histograms of cosine similarity (ref vs alt) for TraitGym Mendelian promoter variants (`experiments/figures/score_histograms.png`), and benign variants stratified by repeat vs non-repeat (`experiments/figures/score_histograms_by_region.png`).
+
+Results:
+- All cosine similarities are in the range 0.998–1.000 (mean pooling over 512 positions dilutes the single-nucleotide change)
+- At step 800 (peak AUPRC): benign mean=0.9988, pathogenic mean=0.9983 — a gap of ~0.0005
+- At step 2000: gap shrinks to ~0.0002 (0.9982 vs 0.9980)
+- Benign variants in repeat regions have slightly higher similarity (0.9990) than non-repeat (0.9988) at step 800
