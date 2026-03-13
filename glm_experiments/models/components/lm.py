@@ -205,6 +205,117 @@ class DLM(GeneralMaskedLM):
     pass  # All logic inherited from GeneralMaskedLM
 
 
+class SimCSE(nn.Module):
+    """SimCSE contrastive learning model for sequence embeddings.
+
+    Learns sequence embeddings by passing the same input through the model twice
+    with different dropout masks, then applying InfoNCE contrastive loss with
+    in-batch negatives.
+
+    Architecture: input_ids → embedder → encoder → layer_norm → dropout → mean_pool → embedding
+
+    Does NOT inherit from LM — no decoder, different loss (contrastive vs cross-entropy).
+
+    Args:
+        embedder: Token embedding layer
+        encoder: Encoder module (e.g., ByteNet or Transformer)
+        layer_norm: Layer normalization module
+        dropout_p: Dropout probability (required for SimCSE — without it, two forward
+            passes produce identical embeddings and contrastive learning collapses)
+        temperature: Temperature for InfoNCE loss scaling
+    """
+
+    def __init__(
+        self,
+        embedder: nn.Module,
+        encoder: nn.Module,
+        layer_norm: nn.Module,
+        dropout_p: float = 0.1,
+        temperature: float = 0.05,
+    ):
+        super().__init__()
+
+        # SimCSE requires an encoder with built-in dropout (e.g., Transformer with dropout > 0)
+        # so that two forward passes produce different representations.
+        # ByteNet has no dropout support and is not compatible.
+        from glm_experiments.models.components.bytenet import ByteNet
+
+        assert not isinstance(encoder, ByteNet), (
+            "SimCSE requires an encoder with built-in dropout. "
+            "ByteNet has no dropout support — use Transformer with dropout > 0."
+        )
+
+        self.embedder = embedder
+        self.encoder = encoder
+        self.layer_norm = layer_norm
+        self.dropout = nn.Dropout(p=dropout_p)
+        self.temperature = temperature
+
+    def get_embeddings(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Compute sequence embeddings via mean pooling.
+
+        Args:
+            input_ids: Input token IDs of shape (batch, seq_len), int8 or long
+
+        Returns:
+            Sequence embeddings of shape (batch, hidden_dim)
+        """
+        input_ids = input_ids.long()
+        x = self.embedder(input_ids)  # (batch, seq_len, hidden_dim)
+        x = self.encoder(x)  # (batch, seq_len, hidden_dim)
+        x = self.layer_norm(x)  # (batch, seq_len, hidden_dim)
+        x = self.dropout(x)  # (batch, seq_len, hidden_dim)
+        x = x.mean(dim=1)  # (batch, hidden_dim) — mean pool over positions
+        return x
+
+    def compute_loss(
+        self,
+        emb1: torch.Tensor,
+        emb2: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        """Compute InfoNCE contrastive loss with in-batch negatives.
+
+        Args:
+            emb1: First embedding of shape (batch, hidden_dim)
+            emb2: Second embedding of shape (batch, hidden_dim)
+
+        Returns:
+            Dictionary with key "loss"
+        """
+        # Cosine similarity matrix: (batch, batch)
+        emb1 = F.normalize(emb1, dim=-1)
+        emb2 = F.normalize(emb2, dim=-1)
+        sim_matrix = emb1 @ emb2.T / self.temperature
+
+        # Labels: diagonal (each sequence matches itself)
+        labels = torch.arange(sim_matrix.size(0), device=sim_matrix.device)
+        loss = F.cross_entropy(sim_matrix, labels)
+
+        return {"loss": loss}
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        labels: torch.Tensor,
+        soft_masked: torch.Tensor,
+        soft_masked_weight: float,
+    ) -> dict[str, torch.Tensor]:
+        """Forward pass: two passes with different dropout, then contrastive loss.
+
+        Args:
+            input_ids: Input token IDs of shape (batch, seq_len), int8 or long
+            labels: Ignored (accepted for interface compatibility with LM)
+            soft_masked: Ignored (accepted for interface compatibility with LM)
+            soft_masked_weight: Ignored (accepted for interface compatibility with LM)
+
+        Returns:
+            Dictionary with key "loss"
+        """
+        emb1 = self.get_embeddings(input_ids)
+        emb2 = self.get_embeddings(input_ids)
+        return self.compute_loss(emb1, emb2)
+
+
 class CLM(LM):
     """Causal language model (autoregressive).
 

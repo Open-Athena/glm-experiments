@@ -254,6 +254,9 @@ class TransformerBlock(nn.Module):
             Whether to use causal masking (default: False).
         sliding_window: int | None
             Window size for sliding window attention (default: None).
+        dropout: float
+            Dropout probability applied after attention and FFN outputs,
+            before residual addition (default: 0.0).
 
     Returns:
         FloatTensor of shape `(batch_size, sequence_length, d_model)`.
@@ -267,6 +270,7 @@ class TransformerBlock(nn.Module):
         positional_encoder: RotaryEmbedding,
         is_causal: bool = False,
         sliding_window: int | None = None,
+        dropout: float = 0.0,
     ):
         super().__init__()
         self.attn = MultiHeadSelfAttention(
@@ -279,6 +283,8 @@ class TransformerBlock(nn.Module):
         self.ffn = SwiGLU(d_model=d_model, d_ff=d_ff)
         self.ln1 = nn.RMSNorm(d_model)
         self.ln2 = nn.RMSNorm(d_model)
+        self.attn_dropout = nn.Dropout(dropout)
+        self.ffn_dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor):
         """
@@ -292,11 +298,11 @@ class TransformerBlock(nn.Module):
         # NOTE: this is a pre-norm Transformer, and differs from the original
         # description in the paper.
         # Apply the multi-head self-attention sublayer
-        x_attn = self.attn(self.ln1(x))
+        x_attn = self.attn_dropout(self.attn(self.ln1(x)))
         attn_sublayer_output = x + x_attn
 
         # Apply the feed-forward sublayer
-        x_ffn = self.ffn(self.ln2(attn_sublayer_output))
+        x_ffn = self.ffn_dropout(self.ffn(self.ln2(attn_sublayer_output)))
         ffn_sublayer_output = attn_sublayer_output + x_ffn
         return ffn_sublayer_output
 
@@ -331,6 +337,9 @@ class Transformer(nn.Module):
             (default: None).
         context_length: int
             Maximum sequence length for RoPE cache (default: 512).
+        dropout: float
+            Dropout probability for residual connections in each TransformerBlock
+            (default: 0.0).
     """
 
     def __init__(
@@ -343,6 +352,7 @@ class Transformer(nn.Module):
         is_causal: bool = False,
         sliding_window: list[int | None] | None = None,
         context_length: int = 512,
+        dropout: float = 0.0,
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -384,6 +394,7 @@ class Transformer(nn.Module):
                     positional_encoder=self.positional_encoder,
                     is_causal=is_causal,
                     sliding_window=self.sliding_window[i],
+                    dropout=dropout,
                 )
                 for i in range(n_layers)
             ]

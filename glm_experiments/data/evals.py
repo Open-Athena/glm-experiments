@@ -157,10 +157,12 @@ def load_eval_dataset(
     if objective in ("mlm", "dlm"):
         # Both MLM and DLM use the same bidirectional masking transform
         transform_func = transform_llr_mlm
-    elif objective == "clm":
+    elif objective in ("clm", "simcse"):
         transform_func = transform_llr_clm
     else:
-        raise ValueError(f"Unknown objective: {objective}. Must be 'mlm', 'dlm', or 'clm'.")
+        raise ValueError(
+            f"Unknown objective: {objective}. Must be 'mlm', 'dlm', 'clm', or 'simcse'."
+        )
 
     transform_fn = partial(
         transform_func,

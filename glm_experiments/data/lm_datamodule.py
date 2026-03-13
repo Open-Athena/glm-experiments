@@ -531,3 +531,42 @@ class CLMDataModule(LMDataModule):
             Tuple of (input_ids, labels) where labels are same as input_ids
         """
         return apply_clm_labels(input_ids)
+
+
+def apply_simcse_labels(input_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Prepare SimCSE labels (no masking or modification).
+
+    SimCSE doesn't modify inputs — the contrastive signal comes from dropout noise.
+
+    Args:
+        input_ids: Token IDs of shape (batch_size, seq_len)
+
+    Returns:
+        Tuple of (input_ids, labels) both as int8, both unchanged.
+    """
+    input_ids = input_ids.clone().to(torch.int8)
+    labels = input_ids.clone()
+    return input_ids, labels
+
+
+class SimCSEDataModule(LMDataModule):
+    """DataModule for SimCSE contrastive learning.
+
+    Args:
+        **kwargs: Arguments passed to LMDataModule
+    """
+
+    def get_objective(self) -> str:
+        """Return the objective type for SimCSE."""
+        return "simcse"
+
+    def apply_labels(self, input_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Prepare SimCSE labels (input unchanged, contrastive signal from dropout).
+
+        Args:
+            input_ids: Tokenized input IDs of shape (batch_size, seq_len)
+
+        Returns:
+            Tuple of (input_ids, labels) where both are unchanged
+        """
+        return apply_simcse_labels(input_ids)

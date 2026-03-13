@@ -1,9 +1,10 @@
-"""Lightning modules for language modeling (MLM and CLM)."""
+"""Lightning modules for language modeling (MLM, CLM, and SimCSE)."""
 
 from typing import Any
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from biofoundation.model.scoring import compute_llr_clm, compute_llr_mlm
 from lightning import LightningModule
 from lightning.pytorch.utilities import grad_norm
@@ -430,3 +431,128 @@ class CLMLitModule(LMLitModule):
             model=self.adapter,
             input_ids=batch["input_ids"],
         )
+
+
+class SimCSELitModule(LMLitModule):
+    """Lightning module for SimCSE contrastive learning.
+
+    Inherits from LMLitModule to reuse optimizer/scheduler config, eval metric
+    infrastructure, and on_validation_epoch_end().
+
+    Overrides training_step and validation_step to log only a single loss
+    (no loss_full/loss_non_soft_masked since those are token-level decompositions
+    that don't apply to contrastive learning).
+
+    Args:
+        net: SimCSE model
+        optimizer: Optimizer partial function
+        scheduler: Scheduler partial function
+    """
+
+    def create_adapter(self, net: nn.Module) -> nn.Module:
+        """Return net directly (no adapter needed for SimCSE)."""
+        return net
+
+    def get_loss_name(self) -> str:
+        """Return SimCSE loss metric name."""
+        return "simcse_loss"
+
+    def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
+        """Training step — logs only one loss (no token-level decompositions).
+
+        Args:
+            batch: Batch dict with keys: input_ids, labels, soft_masked
+            batch_idx: Batch index
+
+        Returns:
+            Loss tensor for backprop
+        """
+        loss_dict = self.model_step(batch)
+
+        self.log(
+            f"train/{self.loss_name}",
+            loss_dict["loss"],
+            on_step=True,
+            on_epoch=False,
+            prog_bar=True,
+        )
+
+        return loss_dict["loss"]
+
+    def validation_step(
+        self, batch: dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
+    ) -> None:
+        """Validation step for SimCSE and eval dataloaders.
+
+        Args:
+            batch: Batch dict (keys depend on dataloader)
+            batch_idx: Batch index
+            dataloader_idx: 0 for SimCSE validation, 1+ for eval datasets
+        """
+        if dataloader_idx == 0:
+            # SimCSE validation — log only one loss
+            loss_dict = self.model_step(batch)
+
+            self.log(
+                f"val/{self.loss_name}",
+                loss_dict["loss"],
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                add_dataloader_idx=False,
+                sync_dist=True,
+            )
+        else:
+            # Eval datasets — reuse parent's eval infrastructure
+            eval_idx = dataloader_idx - 1
+
+            if eval_idx >= len(self._eval_names):
+                raise IndexError(
+                    f"dataloader_idx={dataloader_idx} exceeds configured evals. "
+                    f"Expected indices 0-{len(self._eval_names)} for "
+                    f"{len(self._eval_names)} eval(s)."
+                )
+
+            eval_name = self._eval_names[eval_idx]
+            eval_config = self._eval_metrics[eval_name]
+
+            # Compute raw cosine similarity scores
+            raw_scores = self._compute_raw_llr(batch)
+
+            # Apply transform
+            from glm_experiments.utils.metrics import get_transform
+
+            transform_fn = get_transform(eval_config["transform"])
+            transformed_scores = transform_fn(raw_scores)
+
+            # Update CatMetrics
+            label_col = eval_config["label_column"]
+            eval_config["scores"].update(transformed_scores)
+            eval_config["labels"].update(batch[label_col])
+
+    def _compute_raw_llr(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        """Compute cosine similarity between ref and alt embeddings.
+
+        Uses CLM-style eval format: input_ids shape [B, 2, L] with ref and alt sequences.
+        Dropout is disabled (eval mode) for deterministic scoring.
+
+        Args:
+            batch: Batch with keys {input_ids, label} where input_ids is shape [B, 2, L]
+
+        Returns:
+            Cosine similarity scores in [-1, 1] (higher = more similar)
+        """
+        input_ids = batch["input_ids"]  # (B, 2, L)
+
+        # Disable dropout for deterministic embeddings
+        was_training = self.net.training
+        self.net.eval()
+
+        with torch.no_grad():
+            ref_emb = self.net.get_embeddings(input_ids[:, 0])  # (B, D)
+            alt_emb = self.net.get_embeddings(input_ids[:, 1])  # (B, D)
+
+        if was_training:
+            self.net.train()
+
+        return F.cosine_similarity(ref_emb, alt_emb)  # (B,)
