@@ -55,18 +55,51 @@ Run cancelled at step 2240 (~2 it/s).
 
 **Changes from previous run**:
 - lr: 0.001 → 0.0001
-- log_every_n_steps: 1000 → 100
-- num_workers: 8 → 4
+
+**Config**: `configs/experiment/simcse_small_lr1e4.yaml`
 
 **Command**:
 ```bash
-uv run python glm_experiments/train.py experiment=simcse_transformer_small \
-  trainer.devices=1 trainer.strategy=auto \
-  data.dataset_name=songlab/gpn-animal-promoter-dataset \
-  data.batch_size=256 \
-  data.num_workers=4 \
-  model.optimizer.lr=0.0001 \
-  trainer.log_every_n_steps=100
+uv run python glm_experiments/train.py experiment=simcse_small_lr1e4
 ```
 
-**Results**: _pending_
+**W&B**: https://wandb.ai/gonzalobenegas/glm-experiments/runs/zxatgqpv
+
+**Results**:
+
+| Step | train/simcse_loss | val/simcse_loss | val/traitgym_mendelian_promoter_auprc |
+|------|-------------------|-----------------|---------------------------------------|
+| 100  | 1.660             | 1.700           | 0.1468                                |
+| 200  | 0.467             | 1.700           | 0.1230                                |
+| 300  | 0.146             | 0.589           | 0.1305                                |
+| 400  | 0.073             | 0.297           | 0.1892                                |
+| 500  | 0.028             | 0.100           | 0.2132                                |
+| 600  | 0.023             | 0.060           | 0.2860                                |
+| 700  | 0.008             | 0.027           | 0.2494                                |
+| 800  | 0.008             | 0.023           | 0.2177                                |
+| 900  | 0.003             | 0.013           | 0.2734                                |
+| 1000 | 0.002             | 0.011           | 0.1709                                |
+| 1100 | 0.002             | 0.007           | 0.1499                                |
+| 1200 | 0.002             | 0.007           | 0.1783                                |
+| 1300 | 0.001             | 0.005           | 0.1825                                |
+| 1400 | 0.001             | 0.006           | 0.1647                                |
+| 1500 | 0.001             | 0.004           | 0.1606                                |
+| 1600 | 0.000             | 0.004           | 0.1698                                |
+| 1700 | 0.000             | 0.004           | 0.1502                                |
+| 1800 | 0.001             | 0.003           | 0.1164                                |
+| 1900 | 0.000             | 0.004           | 0.1661                                |
+| 2000 | 0.001             | 0.003           | 0.1382                                |
+| 2100 | 0.000             | 0.003           | 0.1249                                |
+| 2200 | 0.000             | 0.003           | 0.1154                                |
+| 2300 | 0.000             | 0.003           | 0.1222                                |
+
+Run cancelled at step ~2355. Peak AUPRC: 0.2860 at step 600.
+
+**Observations**:
+- Much more stable than lr=1e-3 — loss decreases monotonically, no rebound
+- AUPRC peaks early (0.286 at step 600) then gradually degrades back to baseline by step 2k+
+- Loss keeps decreasing while AUPRC gets worse — classic sign that the contrastive objective is not aligned with the downstream task
+- The model gets better at matching dropout-augmented views but the learned representations lose variant-discriminative information
+
+**Next steps**:
+- _TBD_
