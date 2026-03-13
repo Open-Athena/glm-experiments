@@ -1,18 +1,5 @@
 # Experiment Log
 
-## Directions to explore
-
-- Sweep dropout rate and temperature
-- Further decrease learning rate
-- Try CNN pyramid architecture
-- Increase batch size (with smaller transformer or CNN)
-- Address repetitive elements (soft-masked/lowercase in genome): they have strong patterns the model may latch onto but are mostly non-functional. Could confuse the contrastive objective. Ideas:
-  - Mask out repeat regions before pooling (only embed non-repetitive content)
-  - Weighted mean pooling (downweight soft-masked positions, similar to MLM loss weighting)
-  - Augmentation via repeat shuffling (permute repeat regions in positive pairs to teach invariance)
-
----
-
 ## 2026-03-13: SimCSE Small Transformer
 
 **Branch**: `SimCSE`
@@ -317,3 +304,9 @@ Cancelled at step ~800. Peak AUPRC: 0.1742 at step 200.
 - Much worse than transformer baseline (peak 0.174 vs 0.258)
 - Loss collapses very fast (near zero by step 200) but AUPRC stays flat ~0.15
 - CNN pyramid pools down to 1 position — may lose too much spatial information for VEP
+
+---
+
+## Conclusion
+
+SimCSE's dropout-invariance objective is not well-aligned with variant effect prediction. The AUPRC ceiling is ~0.26-0.29 regardless of architecture (transformer vs CNN), hyperparameters (dropout, temperature, learning rate), or batch size. The model learns to make dropout-augmented views similar, but this does not teach it which sequence positions are functionally important. Masked language modeling (as used by GPN) is directly aligned with VEP because predicting individual tokens in context is essentially the same task as scoring how "surprising" a variant is.
